@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +15,13 @@ IMAGE_MODEL_PATH = Path(os.getenv("DF_IMAGE_MODEL", PROJECT_ROOT / "models" / "e
 VIDEO_MODEL_PATH = Path(os.getenv("DF_VIDEO_MODEL", PROJECT_ROOT / "models" / "checkpoints" / "video_gru.pt"))
 AUDIO_MODEL_PATH = Path(os.getenv("DF_AUDIO_MODEL", PROJECT_ROOT / "models" / "exports" / "audio_rf.joblib"))
 
+CRAWLER_ENABLED = os.getenv("DF_CRAWLER_ENABLED", "1").lower() not in {"0", "false", "no"}
+CRAWLER_MAX_ITEMS = int(os.getenv("DF_CRAWLER_MAX_ITEMS", "60"))
+CRAWLER_TIMEOUT_SECONDS = float(os.getenv("DF_CRAWLER_TIMEOUT_SECONDS", "8"))
+CRAWLER_REFRESH_HOURS = int(os.getenv("DF_CRAWLER_REFRESH_HOURS", "24"))
+CRAWLER_QUERY = os.getenv("DF_CRAWLER_QUERY", "deepfake dataset")
+CRAWLER_OUTPUT = Path(os.getenv("DF_CRAWLER_OUTPUT", PROJECT_ROOT / "data" / "external" / "dataset_catalog.json"))
+
 
 app = FastAPI(title="Deepfake Detection API", version="1.0.0")
 app.add_middleware(
@@ -22,6 +31,55 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+_crawler_status: dict = {
+    "enabled": CRAWLER_ENABLED,
+    "running": False,
+    "last_run": None,
+    "last_error": None,
+    "records": 0,
+    "output": str(CRAWLER_OUTPUT),
+}
+
+
+def _start_dataset_crawler() -> None:
+    if not CRAWLER_ENABLED:
+        return
+
+    from deepfake_detector.data.web_crawler import DatasetCrawler
+
+    crawler = DatasetCrawler(
+        output_file=CRAWLER_OUTPUT,
+        max_items=CRAWLER_MAX_ITEMS,
+        timeout_seconds=CRAWLER_TIMEOUT_SECONDS,
+        refresh_hours=CRAWLER_REFRESH_HOURS,
+        search_query=CRAWLER_QUERY,
+    )
+
+    if not crawler.should_refresh():
+        return
+
+    def _worker() -> None:
+        _crawler_status["running"] = True
+        _crawler_status["last_error"] = None
+        try:
+            count = crawler.crawl_once()
+            _crawler_status["records"] = count
+        except Exception as exc:
+            _crawler_status["last_error"] = str(exc)
+        finally:
+            _crawler_status["running"] = False
+            if CRAWLER_OUTPUT.exists():
+                mtime = datetime.fromtimestamp(Path(CRAWLER_OUTPUT).stat().st_mtime, tz=timezone.utc)
+                _crawler_status["last_run"] = mtime.replace(microsecond=0).isoformat()
+            else:
+                _crawler_status["last_run"] = None
+
+    threading.Thread(target=_worker, name="dataset-crawler", daemon=True).start()
+
+
+@app.on_event("startup")
+def _app_startup() -> None:
+    _start_dataset_crawler()
 
 
 def _as_result(prob_fake: float, details: dict) -> dict:
@@ -62,6 +120,7 @@ def health() -> dict:
             "video": VIDEO_MODEL_PATH.exists(),
             "audio": AUDIO_MODEL_PATH.exists(),
         },
+        "datasetCrawler": _crawler_status,
     }
 
 

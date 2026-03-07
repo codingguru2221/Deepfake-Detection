@@ -182,3 +182,20 @@ Health check:
 ```text
 http://localhost:8000/health
 ```
+
+## Auto Dataset Crawler (Low RAM)
+
+Backend startup par ek lightweight metadata crawler background me run karta hai aur catalog save karta hai:
+- Output: `data/external/dataset_catalog.json`
+- Sources: Kaggle, Figshare, Zenodo, arXiv
+- RAM usage low rakhne ke liye hard item limits aur short network timeouts use hote hain.
+
+Environment variables:
+
+```powershell
+$env:DF_CRAWLER_ENABLED="1"            # 0 to disable
+$env:DF_CRAWLER_MAX_ITEMS="60"         # total records cap
+$env:DF_CRAWLER_TIMEOUT_SECONDS="8"    # per source request timeout
+$env:DF_CRAWLER_REFRESH_HOURS="24"     # startup refresh interval
+$env:DF_CRAWLER_QUERY="deepfake dataset"
+```
