@@ -1,0 +1,73 @@
+Build a production-ready frontend for my Python Deepfake Detection project.
+
+Context:
+- Backend is Python and already exists.
+- Pipeline supports image, video, and audio deepfake detection.
+- It has CLI modules for preprocess, train, evaluate, infer.
+- I want a frontend so users can upload files and run inference easily.
+
+Your task:
+Create a complete frontend + backend integration plan and implementation-ready code.
+
+Tech requirements:
+- Frontend: React (Vite) + Tailwind CSS
+- Backend API layer: FastAPI (serve model inference endpoints)
+- Communication: REST APIs (JSON) + file upload (multipart/form-data)
+- Add CORS support
+- Keep code modular and clean
+
+Features required:
+1. Landing page with project title, short description, and model status.
+2. Upload section:
+   - Image upload
+   - Video upload
+   - Audio upload
+   - Support drag-and-drop + file picker
+3. Inference controls:
+   - Buttons: Run Image, Run Video, Run Audio, Run Multimodal
+   - Loading/progress indicators
+4. Result dashboard:
+   - Probability scores for each modality
+   - Final fused prediction: REAL or DEEPFAKE
+   - Confidence percentage
+   - Color-coded badges
+5. History panel:
+   - List previous predictions with timestamp and filename
+6. Error handling:
+   - User-friendly messages for invalid file type, backend failure, missing model
+7. Settings panel:
+   - API base URL
+   - Toggle modalities for multimodal fusion
+8. Responsive UI for desktop and mobile
+
+Backend integration details:
+- Expose these endpoints:
+  - POST /infer/image
+  - POST /infer/video
+  - POST /infer/audio
+  - POST /infer/multimodal
+  - GET /health
+- Each inference endpoint returns:
+  {
+    "prediction": "real|deepfake",
+    "prob_fake": float,
+    "confidence": float,
+    "details": {...}
+  }
+- Multimodal returns per-modality scores + fused score.
+
+Also include:
+- Project folder structure for frontend and api service
+- .env usage (VITE_API_BASE_URL)
+- Reusable API client module
+- Clean component architecture
+- Step-by-step run commands:
+  - backend start
+  - frontend start
+- Optional Docker setup for both services
+
+Important:
+- Write full runnable code (not pseudo code).
+- Keep UI modern and clean.
+- Add comments where needed.
+- Make sure frontend opens in browser and works with the Python inference backend.

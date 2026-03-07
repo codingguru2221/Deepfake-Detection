@@ -1,0 +1,19 @@
+project:
+  name: multimodal-deepfake-detection
+  random_seed: 42
+  paths:
+    raw_data: data/raw
+    processed_data: data/processed
+    checkpoints: models/checkpoints
+    exports: models/exports
+image_video:
+  image_size: 224
+  frame_stride: 10
+  max_frames_per_video: 30
+  batch_size: 16
+  epochs: 5
+audio:
+  sample_rate: 16000
+  n_mfcc: 40
+  hop_length: 256
+  n_fft: 1024
