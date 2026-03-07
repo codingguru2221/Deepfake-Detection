@@ -229,6 +229,7 @@ class DatasetCrawler:
         timeout_seconds: float = 8.0,
         refresh_hours: int = 24,
         search_query: str = "deepfake dataset",
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.output_file = output_file
         self.max_items = max(1, max_items)
@@ -236,6 +237,7 @@ class DatasetCrawler:
         self.refresh_hours = max(1, refresh_hours)
         self.search_query = search_query
         self._lock = threading.Lock()
+        self.stop_event = stop_event
 
     def should_refresh(self) -> bool:
         if not self.output_file.exists():
@@ -256,12 +258,16 @@ class DatasetCrawler:
         all_records: list[DatasetRecord] = []
         dedupe: set[tuple[str, str]] = set()
         for source_name, fetcher in sources:
+            if self.stop_event and self.stop_event.is_set():
+                break
             try:
                 records = fetcher(source_limit, self.timeout_seconds, self.search_query)
             except Exception as exc:
                 logger.warning("Dataset crawler source failed: %s (%s)", source_name, exc)
                 continue
             for record in records:
+                if self.stop_event and self.stop_event.is_set():
+                    break
                 key = (record.source, record.url)
                 if key in dedupe:
                     continue
@@ -285,4 +291,3 @@ class DatasetCrawler:
         self.output_file.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
             self.output_file.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
-

@@ -199,3 +199,32 @@ $env:DF_CRAWLER_TIMEOUT_SECONDS="8"    # per source request timeout
 $env:DF_CRAWLER_REFRESH_HOURS="24"     # startup refresh interval
 $env:DF_CRAWLER_QUERY="deepfake dataset"
 ```
+
+Additional crawler/runtime options:
+
+```powershell
+$env:DF_CRAWLER_OUTPUT="data/external/dataset_catalog.json"
+$env:DF_CRAWLER_LOG="data/external/crawler.log"
+$env:DF_RUNTIME_LEARNING_ENABLED="1"
+$env:DF_RUNTIME_MAX_SAMPLE_MB="50"
+```
+
+## Runtime Learning Loop
+
+Now the project supports a runtime feedback-training loop:
+- Every inference can store a runtime sample (`sample_id`) on disk.
+- UI feedback (`real`/`deepfake` + rating/comment) is saved via API.
+- Runtime training builds a manifest combining:
+  - user-labeled samples,
+  - high-confidence pseudo labels from user inputs,
+  - crawler dataset references.
+- A lightweight probability calibrator is trained (when enough labels exist) and applied on future inference.
+
+Main API endpoints:
+- `GET /crawler/status`
+- `GET /crawler/logs`
+- `POST /crawler/run`
+- `POST /crawler/control`
+- `POST /feedback/accuracy`
+- `POST /train/runtime`
+- `GET /train/runtime/status`

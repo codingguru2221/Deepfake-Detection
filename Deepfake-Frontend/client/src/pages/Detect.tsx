@@ -1,9 +1,11 @@
 import { useState, useRef } from "react";
-import { Upload, FileImage, FileVideo, FileAudio, X, AlertCircle, CheckCircle2, ShieldAlert, Zap } from "lucide-react";
+import { Upload, FileImage, FileVideo, FileAudio, X, AlertCircle, ShieldAlert, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Modality, useStore, api } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Detect() {
   const [file, setFile] = useState<File | null>(null);
@@ -13,9 +15,14 @@ export default function Detect() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackLabel, setFeedbackLabel] = useState<'real' | 'deepfake'>('real');
+  const [feedbackRating, setFeedbackRating] = useState(4);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { apiBaseUrl, addHistory, settings } = useStore();
+  const { toast } = useToast();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -84,6 +91,8 @@ export default function Detect() {
       clearInterval(interval);
       setProgress(100);
       setResult(prediction);
+      setFeedbackComment("");
+      setFeedbackLabel(prediction.prediction === "deepfake" ? "deepfake" : "real");
       
       addHistory({
         id: Math.random().toString(36).substring(7),
@@ -99,6 +108,39 @@ export default function Detect() {
       setError(err.message || "Failed to process the file.");
     } finally {
       setTimeout(() => setIsProcessing(false), 500);
+    }
+  };
+
+  const submitFeedback = async () => {
+    const sampleId = result?.details?.sample_id;
+    if (!sampleId) {
+      toast({
+        title: "Feedback unavailable",
+        description: "This result does not include a runtime sample id.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSubmittingFeedback(true);
+    try {
+      await api.submitAccuracyFeedback(apiBaseUrl, {
+        sample_id: sampleId,
+        actual_label: feedbackLabel,
+        rating: feedbackRating,
+        comment: feedbackComment || undefined,
+      });
+      toast({
+        title: "Feedback saved",
+        description: "Feedback queued for runtime training.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Feedback failed",
+        description: err?.message || "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
     }
   };
 
@@ -296,6 +338,47 @@ export default function Detect() {
                     <span>Time: {result.details.processing_time}</span>
                   </div>
                 )}
+
+                <div className="pt-4 border-t border-border space-y-3">
+                  <h4 className="text-sm font-mono text-muted-foreground">Accuracy Feedback</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={feedbackLabel === "real" ? "default" : "outline"}
+                      onClick={() => setFeedbackLabel("real")}
+                      disabled={isSubmittingFeedback}
+                    >
+                      Mark As Real
+                    </Button>
+                    <Button
+                      variant={feedbackLabel === "deepfake" ? "default" : "outline"}
+                      onClick={() => setFeedbackLabel("deepfake")}
+                      disabled={isSubmittingFeedback}
+                    >
+                      Mark As Deepfake
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs font-mono text-muted-foreground">Rating (1-5)</label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={5}
+                      value={feedbackRating}
+                      onChange={(e) => setFeedbackRating(Number(e.target.value))}
+                      className="w-full"
+                    />
+                    <span className="text-xs font-mono">{feedbackRating}</span>
+                  </div>
+                  <Textarea
+                    value={feedbackComment}
+                    onChange={(e) => setFeedbackComment(e.target.value)}
+                    placeholder="Optional note about why prediction is right/wrong..."
+                    rows={3}
+                  />
+                  <Button onClick={submitFeedback} disabled={isSubmittingFeedback} className="w-full">
+                    {isSubmittingFeedback ? "Submitting..." : "Submit Accuracy Feedback"}
+                  </Button>
+                </div>
               </div>
             )}
           </div>

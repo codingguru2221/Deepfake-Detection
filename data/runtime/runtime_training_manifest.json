@@ -1,0 +1,162 @@
+{
+  "generated_at": "2026-03-07T15:54:33+00:00",
+  "user_labeled_samples": [],
+  "pseudo_labeled_samples": [],
+  "crawler_dataset_references": [
+    {
+      "source": "figshare",
+      "title": "Input Data",
+      "url": "https://figshare.com/articles/dataset/Input_Data/31563871"
+    },
+    {
+      "source": "figshare",
+      "title": "Supplement for the paper titled: \"AI and the Double Movement in Teachers\u2019 Work: Evidence from Exploratory Interviews\"",
+      "url": "https://figshare.com/articles/dataset/Supplement_for_the_paper_titled_AI_and_the_Double_Movement_in_Teachers_Work_Evidence_from_Exploratory_Interviews_/31563865"
+    },
+    {
+      "source": "figshare",
+      "title": "Interview Transcript Bahasa Indonesia",
+      "url": "https://figshare.com/articles/dataset/Interview_Transcript_Bahasa_Indonesia/31563856"
+    },
+    {
+      "source": "figshare",
+      "title": "Organiza\u00e7\u00e3o das Entrevistas Realizadas",
+      "url": "https://figshare.com/articles/dataset/Organiza_o_das_Entrevistas_Realizadas/31563808"
+    },
+    {
+      "source": "figshare",
+      "title": "Molecular Constraints\nand Electronic Structure Direct\nMulti-Step PCET Mechanisms in the Electrochemical Oxidation of Ruthenium\nComplexes",
+      "url": "https://acs.figshare.com/articles/dataset/Molecular_Constraints_and_Electronic_Structure_Direct_Multi-Step_PCET_Mechanisms_in_the_Electrochemical_Oxidation_of_Ruthenium_Complexes/31563806"
+    },
+    {
+      "source": "figshare",
+      "title": "Molecular Constraints\nand Electronic Structure Direct\nMulti-Step PCET Mechanisms in the Electrochemical Oxidation of Ruthenium\nComplexes",
+      "url": "https://acs.figshare.com/articles/dataset/Molecular_Constraints_and_Electronic_Structure_Direct_Multi-Step_PCET_Mechanisms_in_the_Electrochemical_Oxidation_of_Ruthenium_Complexes/31563803"
+    },
+    {
+      "source": "figshare",
+      "title": "Molecular Constraints\nand Electronic Structure Direct\nMulti-Step PCET Mechanisms in the Electrochemical Oxidation of Ruthenium\nComplexes",
+      "url": "https://acs.figshare.com/articles/dataset/Molecular_Constraints_and_Electronic_Structure_Direct_Multi-Step_PCET_Mechanisms_in_the_Electrochemical_Oxidation_of_Ruthenium_Complexes/31563800"
+    },
+    {
+      "source": "figshare",
+      "title": "Transcri\u00e7\u00f5es das Entrevistas",
+      "url": "https://figshare.com/articles/dataset/Transcri_es_das_Entrevistas/31563772"
+    },
+    {
+      "source": "figshare",
+      "title": "Formul\u00e1rio de caracteriza\u00e7\u00e3o de experi\u00eancia profissional",
+      "url": "https://figshare.com/articles/dataset/Formul_rio_de_caracteriza_o_de_experi_ncia_profissional/31563775"
+    },
+    {
+      "source": "figshare",
+      "title": "Sediment PAH Data for Anthropocene Signal",
+      "url": "https://figshare.com/articles/dataset/Sediment_PAH_Data_as_Anthropocene_Signal_Distinct_from_Previous_Holocene_Variability/31481653"
+    },
+    {
+      "source": "figshare",
+      "title": "<b>Acetylation of MsrA at K117 and K153 Regulates Florfenicol Resistance in </b><b><i>Vibrio alginolyticus</i></b>",
+      "url": "https://figshare.com/articles/dataset/_b_Acetylation_of_MsrA_at_K117_and_K153_Regulates_Florfenicol_Resistance_in_b_b_i_Vibrio_alginolyticus_i_b_/31563643"
+    },
+    {
+      "source": "figshare",
+      "title": "Dataset",
+      "url": "https://figshare.com/articles/dataset/Dataset/31563754"
+    },
+    {
+      "source": "figshare",
+      "title": "<b><i>Delonix regia</i></b><b> regulate early seedling development in vitro</b>",
+      "url": "https://figshare.com/articles/dataset/_b_i_Delonix_regia_i_b_b_regulate_early_seedling_development_in_vitro_b_/31563733"
+    },
+    {
+      "source": "figshare",
+      "title": "Dataset for: Tourist Satisfaction in Urban Sports Parks: A Kano Model Analysis (N=376)",
+      "url": "https://figshare.com/articles/dataset/Dataset_for_Tourist_Satisfaction_in_Urban_Sports_Parks_A_Kano_Model_Analysis_N_376_/31563157"
+    },
+    {
+      "source": "figshare",
+      "title": "One-Step Multi-fragment\nAssembly and Targeted Genomic\nIntegration in Corynebacterium glutamicum",
+      "url": "https://acs.figshare.com/articles/dataset/One-Step_Multi-fragment_Assembly_and_Targeted_Genomic_Integration_in_Corynebacterium_glutamicum/31563715"
+    },
+    {
+      "source": "arxiv",
+      "title": "FaceCam: Portrait Video Camera Control via Scale-Aware Conditioning",
+      "url": "http://arxiv.org/abs/2603.05506v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Towards Multimodal Lifelong Understanding: A Dataset and Agentic Baseline",
+      "url": "http://arxiv.org/abs/2603.05484v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "SurvHTE-Bench: A Benchmark for Heterogeneous Treatment Effect Estimation in Survival Analysis",
+      "url": "http://arxiv.org/abs/2603.05483v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Towards 3D Scene Understanding of Gas Plumes in LWIR Hyperspectral Images Using Neural Radiance Fields",
+      "url": "http://arxiv.org/abs/2603.05473v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Leveraging LLM Parametric Knowledge for Fact Checking without Retrieval",
+      "url": "http://arxiv.org/abs/2603.05471v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "EdgeDAM: Real-time Object Tracking for Mobile Devices",
+      "url": "http://arxiv.org/abs/2603.05463v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "NCTB-QA: A Large-Scale Bangla Educational Question Answering Dataset and Benchmarking Performance",
+      "url": "http://arxiv.org/abs/2603.05462v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Distributed Partial Information Puzzles: Examining Common Ground Construction Under Epistemic Asymmetry",
+      "url": "http://arxiv.org/abs/2603.05450v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "SAIL: Similarity-Aware Guidance and Inter-Caption Augmentation-based Learning for Weakly-Supervised Dense Video Captioning",
+      "url": "http://arxiv.org/abs/2603.05437v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Surprising increase of electron temperature in metal-rich star-forming region",
+      "url": "http://arxiv.org/abs/2603.05434v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "An interpretable prototype parts-based neural network for medical tabular data",
+      "url": "http://arxiv.org/abs/2603.05423v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Video-based Locomotion Analysis for Fish Health Monitoring",
+      "url": "http://arxiv.org/abs/2603.05407v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "An Exploration-Analysis-Disambiguation Reasoning Framework for Word Sense Disambiguation with Low-Parameter LLMs",
+      "url": "http://arxiv.org/abs/2603.05400v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Judge Reliability Harness: Stress Testing the Reliability of LLM Judges",
+      "url": "http://arxiv.org/abs/2603.05399v1"
+    },
+    {
+      "source": "arxiv",
+      "title": "Loop Closure via Maximal Cliques in 3D LiDAR-Based SLAM",
+      "url": "http://arxiv.org/abs/2603.05397v1"
+    }
+  ],
+  "counts": {
+    "user_labeled": 0,
+    "pseudo_labeled": 0,
+    "crawler_refs": 30
+  }
+}

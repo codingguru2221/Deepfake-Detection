@@ -10,6 +10,23 @@ export interface PredictionResult {
   modalityScores?: Record<string, number>;
 }
 
+export interface CrawlerStatus {
+  enabled: boolean;
+  running: boolean;
+  last_run: string | null;
+  last_error: string | null;
+  records: number;
+  output: string;
+  log?: string;
+}
+
+export interface RuntimeTrainingStatus {
+  running: boolean;
+  last_run: string | null;
+  last_error: string | null;
+  last_result: Record<string, any> | null;
+}
+
 export interface HistoryItem {
   id: string;
   filename: string;
@@ -79,5 +96,65 @@ export const api = {
     }
 
     return await res.json();
-  }
+  },
+
+  getCrawlerStatus: async (baseUrl: string): Promise<CrawlerStatus> => {
+    const res = await fetch(`${baseUrl}/crawler/status`, { method: 'GET' });
+    if (!res.ok) throw new Error(`Failed to fetch crawler status (${res.status})`);
+    return await res.json();
+  },
+
+  getCrawlerLogs: async (baseUrl: string, limit = 80): Promise<{ lines: string[]; runtimeLearning: string[] }> => {
+    const res = await fetch(`${baseUrl}/crawler/logs?limit=${limit}`, { method: 'GET' });
+    if (!res.ok) throw new Error(`Failed to fetch crawler logs (${res.status})`);
+    return await res.json();
+  },
+
+  setCrawlerEnabled: async (baseUrl: string, enabled: boolean): Promise<{ enabled: boolean }> => {
+    const res = await fetch(`${baseUrl}/crawler/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) throw new Error(`Failed to update crawler state (${res.status})`);
+    return await res.json();
+  },
+
+  runCrawler: async (baseUrl: string): Promise<{ started: boolean; message: string }> => {
+    const res = await fetch(`${baseUrl}/crawler/run`, { method: 'POST' });
+    if (!res.ok) throw new Error(`Failed to run crawler (${res.status})`);
+    return await res.json();
+  },
+
+  submitAccuracyFeedback: async (
+    baseUrl: string,
+    payload: { sample_id: string; actual_label: 'real' | 'deepfake'; rating?: number; comment?: string },
+  ): Promise<{ status: string }> => {
+    const res = await fetch(`${baseUrl}/feedback/accuracy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(txt || `Feedback submit failed (${res.status})`);
+    }
+    return await res.json();
+  },
+
+  runRuntimeTraining: async (baseUrl: string, includePseudo = true): Promise<{ started: boolean; message?: string }> => {
+    const res = await fetch(`${baseUrl}/train/runtime`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ include_pseudo: includePseudo }),
+    });
+    if (!res.ok) throw new Error(`Runtime training failed (${res.status})`);
+    return await res.json();
+  },
+
+  getRuntimeTrainingStatus: async (baseUrl: string): Promise<RuntimeTrainingStatus> => {
+    const res = await fetch(`${baseUrl}/train/runtime/status`, { method: 'GET' });
+    if (!res.ok) throw new Error(`Failed to fetch training status (${res.status})`);
+    return await res.json();
+  },
 };

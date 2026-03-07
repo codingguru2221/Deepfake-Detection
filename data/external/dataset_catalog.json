@@ -1,8 +1,17 @@
 {
-  "generated_at": "2026-03-07T15:36:23+00:00",
+  "generated_at": "2026-03-07T15:54:27+00:00",
   "query": "deepfake dataset",
   "count": 30,
   "items": [
+    {
+      "source": "figshare",
+      "title": "Input Data",
+      "url": "https://figshare.com/articles/dataset/Input_Data/31563871",
+      "summary": null,
+      "published_at": "2026-03-07T15:48:57+00:00",
+      "tags": null,
+      "license": null
+    },
     {
       "source": "figshare",
       "title": "Supplement for the paper titled: \"AI and the Double Movement in Teachers\u2019 Work: Evidence from Exploratory Interviews\"",
@@ -126,15 +135,6 @@
       "url": "https://acs.figshare.com/articles/dataset/One-Step_Multi-fragment_Assembly_and_Targeted_Genomic_Integration_in_Corynebacterium_glutamicum/31563715",
       "summary": null,
       "published_at": "2026-03-07T14:10:30+00:00",
-      "tags": null,
-      "license": null
-    },
-    {
-      "source": "figshare",
-      "title": "Discovery of\nPotent and Selective Imidazo[2,1\u2011b][1,3,4]thiadiazole-Based\nMNK1/2 Inhibitors with Significant\nEfficacy against Diet-Induced Metabolic Dysfunction-Associated Steatotic\nLiver Disease",
-      "url": "https://acs.figshare.com/articles/dataset/Discovery_of_Potent_and_Selective_Imidazo_2_1_b_1_3_4_thiadiazole-Based_MNK1_2_Inhibitors_with_Significant_Efficacy_against_Diet-Induced_Metabolic_Dysfunction-Associated_Steatotic_Liver_Disease/31563697",
-      "summary": null,
-      "published_at": "2026-03-07T14:08:15+00:00",
       "tags": null,
       "license": null
     },
