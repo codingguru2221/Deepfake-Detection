@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +12,9 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from deepfake_detector.data.auto_dataset_training import run_full_auto_training
 from deepfake_detector.data.runtime_learning import RuntimeLearningManager
+from deepfake_detector.utils.timezone import IST, now_ist_iso
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_MODEL_PATH = Path(os.getenv("DF_IMAGE_MODEL", PROJECT_ROOT / "models" / "exports" / "image_tf_model.keras"))
@@ -20,13 +22,21 @@ VIDEO_MODEL_PATH = Path(os.getenv("DF_VIDEO_MODEL", PROJECT_ROOT / "models" / "c
 AUDIO_MODEL_PATH = Path(os.getenv("DF_AUDIO_MODEL", PROJECT_ROOT / "models" / "exports" / "audio_rf.joblib"))
 
 CRAWLER_ENABLED = os.getenv("DF_CRAWLER_ENABLED", "1").lower() not in {"0", "false", "no"}
-CRAWLER_MAX_ITEMS = int(os.getenv("DF_CRAWLER_MAX_ITEMS", "60"))
+CRAWLER_MAX_ITEMS = int(os.getenv("DF_CRAWLER_MAX_ITEMS", "100"))
 CRAWLER_TIMEOUT_SECONDS = float(os.getenv("DF_CRAWLER_TIMEOUT_SECONDS", "8"))
 CRAWLER_REFRESH_HOURS = int(os.getenv("DF_CRAWLER_REFRESH_HOURS", "24"))
+CRAWLER_POLL_SECONDS = int(os.getenv("DF_CRAWLER_POLL_SECONDS", "300"))
 CRAWLER_QUERY = os.getenv("DF_CRAWLER_QUERY", "deepfake dataset")
 CRAWLER_OUTPUT = Path(os.getenv("DF_CRAWLER_OUTPUT", PROJECT_ROOT / "data" / "external" / "dataset_catalog.json"))
 CRAWLER_LOG = Path(os.getenv("DF_CRAWLER_LOG", PROJECT_ROOT / "data" / "external" / "crawler.log"))
 RUNTIME_LEARNING_ENABLED = os.getenv("DF_RUNTIME_LEARNING_ENABLED", "1").lower() not in {"0", "false", "no"}
+AUTO_TRAIN_ON_CRAWLER = os.getenv("DF_AUTO_TRAIN_ON_CRAWLER", "1").lower() not in {"0", "false", "no"}
+AUTO_TRAIN_MIN_RECORDS = int(os.getenv("DF_AUTO_TRAIN_MIN_RECORDS", "100"))
+AUTO_FULL_MODEL_TRAIN_ENABLED = os.getenv("DF_AUTO_FULL_MODEL_TRAIN_ENABLED", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+}
 MAX_RUNTIME_SAMPLE_MB = float(os.getenv("DF_RUNTIME_MAX_SAMPLE_MB", "50"))
 
 
@@ -41,20 +51,29 @@ app.add_middleware(
 _crawler_status: dict = {
     "enabled": CRAWLER_ENABLED,
     "running": False,
+    "crawl_cycle_running": False,
     "last_run": None,
     "last_error": None,
     "records": 0,
+    "genuine_records": 0,
     "output": str(CRAWLER_OUTPUT),
     "log": str(CRAWLER_LOG),
+    "auto_train_enabled": AUTO_TRAIN_ON_CRAWLER,
+    "auto_train_min_records": AUTO_TRAIN_MIN_RECORDS,
 }
 _crawler_lock = threading.Lock()
 _crawler_stop_event = threading.Event()
 _crawler_thread: Optional[threading.Thread] = None
+_crawler_scheduler_thread: Optional[threading.Thread] = None
+_service_stop_event = threading.Event()
 _runtime_trainer = RuntimeLearningManager(PROJECT_ROOT)
 _training_status: dict = {"running": False, "last_run": None, "last_error": None, "last_result": None}
 _training_lock = threading.Lock()
+_full_train_status: dict = {"running": False, "last_run": None, "last_error": None, "last_result": None}
+_full_train_lock = threading.Lock()
 _calibrator_model = None
 _calibrator_mtime: Optional[float] = None
+_auto_train_state: dict[str, Optional[float]] = {"last_triggered_catalog_mtime": None}
 
 
 class CrawlerControlRequest(BaseModel):
@@ -74,7 +93,7 @@ class RuntimeTrainRequest(BaseModel):
 
 def _append_crawler_log(message: str) -> None:
     CRAWLER_LOG.parent.mkdir(parents=True, exist_ok=True)
-    row = f"{datetime.now(timezone.utc).replace(microsecond=0).isoformat()} {message}"
+    row = f"{now_ist_iso()} {message}"
     with _crawler_lock:
         with CRAWLER_LOG.open("a", encoding="utf-8") as f:
             f.write(row + "\n")
@@ -149,19 +168,23 @@ def _start_dataset_crawler(force: bool = False) -> bool:
 
     def _worker() -> None:
         _crawler_status["running"] = True
+        _crawler_status["crawl_cycle_running"] = True
         _crawler_status["last_error"] = None
         _append_crawler_log("run_started")
         try:
             count = crawler.crawl_once()
             _crawler_status["records"] = count
+            _crawler_status["genuine_records"] = _load_catalog_genuine_count()
             _append_crawler_log(f"run_completed records={count}")
+            _trigger_auto_training_if_ready(int(_crawler_status.get("genuine_records") or count))
         except Exception as exc:
             _crawler_status["last_error"] = str(exc)
             _append_crawler_log(f"run_failed error={exc}")
         finally:
             _crawler_status["running"] = False
+            _crawler_status["crawl_cycle_running"] = False
             if CRAWLER_OUTPUT.exists():
-                mtime = datetime.fromtimestamp(Path(CRAWLER_OUTPUT).stat().st_mtime, tz=timezone.utc)
+                mtime = datetime.fromtimestamp(Path(CRAWLER_OUTPUT).stat().st_mtime, tz=IST)
                 _crawler_status["last_run"] = mtime.replace(microsecond=0).isoformat()
             else:
                 _crawler_status["last_run"] = None
@@ -173,29 +196,168 @@ def _start_dataset_crawler(force: bool = False) -> bool:
     return True
 
 
+def _load_catalog_count() -> int:
+    if not CRAWLER_OUTPUT.exists():
+        return 0
+    try:
+        import json
+
+        payload = json.loads(CRAWLER_OUTPUT.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            count = payload.get("count")
+            if isinstance(count, int):
+                return max(0, count)
+            items = payload.get("items")
+            if isinstance(items, list):
+                return len(items)
+    except Exception:
+        return 0
+    return 0
+
+
+def _load_catalog_genuine_count() -> int:
+    if not CRAWLER_OUTPUT.exists():
+        return 0
+    try:
+        import json
+
+        payload = json.loads(CRAWLER_OUTPUT.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            value = payload.get("genuine_count")
+            if isinstance(value, int):
+                return max(0, value)
+            count = payload.get("count")
+            if isinstance(count, int):
+                return max(0, count)
+    except Exception:
+        return 0
+    return 0
+
+
+def _trigger_auto_training_if_ready(crawler_records: int) -> None:
+    if not RUNTIME_LEARNING_ENABLED or not AUTO_TRAIN_ON_CRAWLER:
+        return
+    if crawler_records < AUTO_TRAIN_MIN_RECORDS:
+        return
+    if not CRAWLER_OUTPUT.exists():
+        return
+    catalog_mtime = CRAWLER_OUTPUT.stat().st_mtime
+    if _auto_train_state.get("last_triggered_catalog_mtime") == catalog_mtime:
+        return
+    with _training_lock:
+        if _training_status["running"]:
+            return
+        worker = threading.Thread(
+            target=_run_runtime_training,
+            kwargs={"include_pseudo": True},
+            name="runtime-learning-auto-train",
+            daemon=True,
+        )
+        _training_status["running"] = True
+        _auto_train_state["last_triggered_catalog_mtime"] = catalog_mtime
+        worker.start()
+    _append_crawler_log(
+        f"auto_training_triggered records={crawler_records} threshold={AUTO_TRAIN_MIN_RECORDS}"
+    )
+    if AUTO_FULL_MODEL_TRAIN_ENABLED:
+        with _full_train_lock:
+            if not _full_train_status["running"]:
+                worker = threading.Thread(
+                    target=_run_full_model_training,
+                    name="crawler-full-model-train",
+                    daemon=True,
+                )
+                _full_train_status["running"] = True
+                worker.start()
+
+
+def _crawler_scheduler_loop() -> None:
+    while not _service_stop_event.wait(max(30, CRAWLER_POLL_SECONDS)):
+        if not _crawler_status["enabled"] or _crawler_status["running"]:
+            continue
+        current = int(_crawler_status.get("genuine_records") or _crawler_status.get("records") or 0)
+        should_force = AUTO_TRAIN_ON_CRAWLER and current < AUTO_TRAIN_MIN_RECORDS
+        _start_dataset_crawler(force=should_force)
+
+
+def _crawler_status_snapshot() -> dict:
+    scheduler_alive = _crawler_scheduler_thread is not None and _crawler_scheduler_thread.is_alive()
+    status = dict(_crawler_status)
+    status["service_running"] = bool(status.get("enabled")) and scheduler_alive
+    status["running"] = bool(status.get("enabled")) and (scheduler_alive or bool(status.get("crawl_cycle_running")))
+    return status
+
+
 def _run_runtime_training(include_pseudo: bool) -> None:
     _training_status["running"] = True
     _training_status["last_error"] = None
     try:
         result = _runtime_trainer.run_training(CRAWLER_OUTPUT, include_pseudo=include_pseudo)
+        _runtime_trainer.apply_training_success(result)
+        _runtime_trainer.refresh_model_accuracies()
         _training_status["last_result"] = {
             "status": result.status,
+            "reason": result.reason,
             "manifest_path": result.manifest_path,
             "calibrator_path": result.calibrator_path,
             "user_labeled_count": result.user_labeled_count,
             "pseudo_count": result.pseudo_count,
             "crawler_refs_count": result.crawler_refs_count,
+            "trainable_samples": result.trainable_samples,
+            "calibrator_accuracy": result.calibrator_accuracy,
+            "calibrator_auc": result.calibrator_auc,
         }
     except Exception as exc:
         _training_status["last_error"] = str(exc)
     finally:
         _training_status["running"] = False
-        _training_status["last_run"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        _training_status["last_run"] = now_ist_iso()
+
+
+def _run_full_model_training() -> None:
+    _full_train_status["running"] = True
+    _full_train_status["last_error"] = None
+    try:
+        result = run_full_auto_training(project_root=PROJECT_ROOT, catalog_path=CRAWLER_OUTPUT)
+        _full_train_status["last_result"] = {
+            "status": result.status,
+            "reason": result.reason,
+            "downloaded_datasets": result.downloaded_datasets,
+            "manifests": result.manifests,
+            "trained_modalities": result.trained_modalities,
+        }
+    except Exception as exc:
+        _full_train_status["last_error"] = str(exc)
+    finally:
+        _full_train_status["running"] = False
+        _full_train_status["last_run"] = now_ist_iso()
 
 
 @app.on_event("startup")
 def _app_startup() -> None:
+    _runtime_trainer.refresh_model_accuracies()
+    _crawler_status["records"] = _load_catalog_count()
+    _crawler_status["genuine_records"] = _load_catalog_genuine_count()
+    if CRAWLER_OUTPUT.exists():
+        mtime = datetime.fromtimestamp(Path(CRAWLER_OUTPUT).stat().st_mtime, tz=IST)
+        _crawler_status["last_run"] = mtime.replace(microsecond=0).isoformat()
+    _trigger_auto_training_if_ready(int(_crawler_status.get("genuine_records") or _crawler_status.get("records") or 0))
     _start_dataset_crawler()
+    global _crawler_scheduler_thread
+    if _crawler_scheduler_thread is None or not _crawler_scheduler_thread.is_alive():
+        _service_stop_event.clear()
+        _crawler_scheduler_thread = threading.Thread(
+            target=_crawler_scheduler_loop,
+            name="dataset-crawler-scheduler",
+            daemon=True,
+        )
+        _crawler_scheduler_thread.start()
+
+
+@app.on_event("shutdown")
+def _app_shutdown() -> None:
+    _service_stop_event.set()
+    _crawler_stop_event.set()
 
 
 def _as_result(prob_fake: float, details: dict) -> dict:
@@ -229,24 +391,31 @@ def _infer_funcs():
 
 @app.get("/health")
 def health() -> dict:
+    availability = {
+        "image": IMAGE_MODEL_PATH.exists(),
+        "video": VIDEO_MODEL_PATH.exists(),
+        "audio": AUDIO_MODEL_PATH.exists(),
+        "multimodal": True,
+    }
     return {
         "status": "ok",
-        "models": {
-            "image": IMAGE_MODEL_PATH.exists(),
-            "video": VIDEO_MODEL_PATH.exists(),
-            "audio": AUDIO_MODEL_PATH.exists(),
-        },
-        "datasetCrawler": _crawler_status,
+        "modelFiles": availability,
+        "models": _runtime_trainer.get_model_status(availability),
+        "datasetCrawler": _crawler_status_snapshot(),
         "runtimeLearning": {
             "enabled": RUNTIME_LEARNING_ENABLED,
             "training": _training_status,
+            "fullTraining": {
+                "enabled": AUTO_FULL_MODEL_TRAIN_ENABLED,
+                "status": _full_train_status,
+            },
         },
     }
 
 
 @app.get("/crawler/status")
 def crawler_status() -> dict:
-    return _crawler_status
+    return _crawler_status_snapshot()
 
 
 @app.get("/crawler/logs")
@@ -283,12 +452,18 @@ def feedback_accuracy(payload: FeedbackRequest) -> dict:
         rating=payload.rating,
         comment=payload.comment,
     )
+    _runtime_trainer.refresh_model_accuracies()
     return {"status": "saved"}
 
 
 @app.get("/train/runtime/status")
 def runtime_train_status() -> dict:
     return _training_status
+
+
+@app.get("/train/full/status")
+def full_train_status() -> dict:
+    return _full_train_status
 
 
 @app.post("/train/runtime")
@@ -298,6 +473,7 @@ def runtime_train(payload: RuntimeTrainRequest) -> dict:
     with _training_lock:
         if _training_status["running"]:
             return {"started": False, "message": "Training already running."}
+        _training_status["running"] = True
         worker = threading.Thread(
             target=_run_runtime_training,
             kwargs={"include_pseudo": payload.include_pseudo},

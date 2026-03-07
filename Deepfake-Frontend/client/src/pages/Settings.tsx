@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Server, Settings2, Database, Bot, Play, Power, RefreshCw } from "lucide-react";
-import { useStore, api, CrawlerStatus, RuntimeTrainingStatus } from "@/lib/store";
+import { useStore, api, CrawlerStatus, RuntimeTrainingStatus, ModelStatus } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { formatIst } from "@/lib/time";
 
 const initialCrawler: CrawlerStatus = {
   enabled: false,
@@ -32,6 +33,8 @@ export default function Settings() {
   const [crawlerLogs, setCrawlerLogs] = useState<string[]>([]);
   const [runtimeLogs, setRuntimeLogs] = useState<string[]>([]);
   const [training, setTraining] = useState<RuntimeTrainingStatus>(initialTrain);
+  const [fullTraining, setFullTraining] = useState<{ enabled: boolean; status: any } | null>(null);
+  const [models, setModels] = useState<Record<string, ModelStatus>>({});
   const [isCrawlerAction, setIsCrawlerAction] = useState(false);
   const [isTrainingAction, setIsTrainingAction] = useState(false);
   const { toast } = useToast();
@@ -43,15 +46,18 @@ export default function Settings() {
   const refreshCrawlerPanels = useCallback(async (targetBaseUrl?: string) => {
     const base = targetBaseUrl || apiBaseUrl;
     try {
-      const [crawlerStatus, logData, trainingStatus] = await Promise.all([
+      const [crawlerStatus, logData, trainingStatus, health] = await Promise.all([
         api.getCrawlerStatus(base),
         api.getCrawlerLogs(base, 100),
         api.getRuntimeTrainingStatus(base),
+        api.getHealth(base),
       ]);
-      setCrawler(crawlerStatus);
+      setCrawler(health.datasetCrawler || crawlerStatus);
       setCrawlerLogs(logData.lines || []);
       setRuntimeLogs(logData.runtimeLearning || []);
-      setTraining(trainingStatus);
+      setTraining(health.runtimeLearning?.training || trainingStatus);
+      setFullTraining(health.runtimeLearning?.fullTraining || null);
+      setModels(health.models || {});
       setStatus("online");
     } catch {
       setStatus("offline");
@@ -133,6 +139,8 @@ export default function Settings() {
     }
   };
 
+  const modelRows = Object.entries(models);
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-5xl">
       <div className="flex flex-col gap-2">
@@ -185,9 +193,15 @@ export default function Settings() {
                 <Switch checked={crawler.enabled} disabled={isCrawlerAction} onCheckedChange={handleCrawlerToggle} />
               </div>
               <div className="text-sm font-mono text-muted-foreground">
-                State: {crawler.running ? "RUNNING" : "IDLE"} | Records: {crawler.records}
+                State: {crawler.running ? (crawler.crawl_cycle_running ? "RUNNING (CRAWLING)" : "RUNNING (STANDBY)") : "IDLE"} | Records: {crawler.records}
               </div>
-              <div className="text-xs text-muted-foreground">Last run: {crawler.last_run || "Never"}</div>
+              <div className="text-xs text-muted-foreground">
+                Genuine deepfake datasets: {crawler.genuine_records ?? crawler.records ?? 0}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Auto-train threshold: {crawler.auto_train_min_records || 100} records ({crawler.auto_train_enabled ? "enabled" : "disabled"})
+              </div>
+              <div className="text-xs text-muted-foreground">Last run (IST): {formatIst(crawler.last_run)}</div>
               <div className="text-xs text-destructive">{crawler.last_error ? `Error: ${crawler.last_error}` : "No errors"}</div>
               <div className="flex gap-2 pt-2">
                 <Button size="sm" onClick={handleCrawlerRun} disabled={isCrawlerAction || !crawler.enabled}>
@@ -204,13 +218,48 @@ export default function Settings() {
             <div className="p-4 rounded-xl border border-border bg-background/40 space-y-3">
               <Label className="text-base">Runtime Training</Label>
               <div className="text-sm font-mono text-muted-foreground">
-                Status: {training.running ? "RUNNING" : "IDLE"}
+                Status: {training.running ? "RUNNING" : (crawler.auto_train_enabled ? "AUTO-WAITING" : "IDLE")}
               </div>
-              <div className="text-xs text-muted-foreground">Last run: {training.last_run || "Never"}</div>
+              <div className="text-xs text-muted-foreground">Last run (IST): {formatIst(training.last_run)}</div>
+              {crawler.auto_train_enabled && (
+                <div className="text-xs text-muted-foreground">
+                  Auto-train condition: {crawler.records || 0}/{crawler.auto_train_min_records || 100} records
+                </div>
+              )}
               <div className="text-xs text-destructive">{training.last_error ? `Error: ${training.last_error}` : "No errors"}</div>
               {training.last_result && (
                 <div className="text-xs text-muted-foreground">
-                  labeled={training.last_result.user_labeled_count || 0}, pseudo={training.last_result.pseudo_count || 0}, crawlerRefs={training.last_result.crawler_refs_count || 0}
+                  status={training.last_result.status}, labeled={training.last_result.user_labeled_count || 0}, pseudo={training.last_result.pseudo_count || 0}, crawlerRefs={training.last_result.crawler_refs_count || 0}
+                </div>
+              )}
+              {training.last_result?.reason && (
+                <div className="text-xs text-muted-foreground">
+                  reason: {training.last_result.reason}
+                </div>
+              )}
+              {(training.last_result?.calibrator_accuracy !== undefined && training.last_result?.calibrator_accuracy !== null) && (
+                <div className="text-xs text-muted-foreground">
+                  calibrator accuracy: {(training.last_result.calibrator_accuracy * 100).toFixed(2)}%
+                  {training.last_result.calibrator_auc !== null && training.last_result.calibrator_auc !== undefined ? ` | auc: ${training.last_result.calibrator_auc.toFixed(4)}` : ""}
+                </div>
+              )}
+              {fullTraining?.enabled && (
+                <div className="pt-2 border-t border-border text-xs text-muted-foreground space-y-1">
+                  <div>
+                    Full model training: {fullTraining.status?.running ? "RUNNING" : "IDLE"}
+                  </div>
+                  <div>
+                    Last full run (IST): {formatIst(fullTraining.status?.last_run || null)}
+                  </div>
+                  {fullTraining.status?.last_result?.status && (
+                    <div>
+                      Full result: {fullTraining.status.last_result.status}
+                      {fullTraining.status.last_result.reason ? ` (${fullTraining.status.last_result.reason})` : ""}
+                    </div>
+                  )}
+                  {fullTraining.status?.last_error && (
+                    <div className="text-destructive">Full train error: {fullTraining.status.last_error}</div>
+                  )}
                 </div>
               )}
               <Button size="sm" onClick={handleRuntimeTrain} disabled={isTrainingAction || training.running}>
@@ -218,6 +267,41 @@ export default function Settings() {
                 Train With Latest Data
               </Button>
             </div>
+          </div>
+        </div>
+
+        <div className="p-6 rounded-2xl border border-border bg-card space-y-6">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <Bot className="w-5 h-5 text-primary" />
+            <h2 className="text-xl font-display font-medium">Model Details & Accuracy</h2>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {modelRows.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No model stats available yet.</div>
+            ) : (
+              modelRows.map(([key, model]) => (
+                <div key={key} className="p-4 rounded-xl border border-border bg-background/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-base">{model.label}</div>
+                    <div className={`text-xs font-mono ${model.model_available ? "text-primary" : "text-destructive"}`}>
+                      {model.model_available ? "AVAILABLE" : "MISSING"}
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Parameters: {model.parameter_count} ({model.parameter_summary})
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Trained data points: {model.trained_data_points}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Accuracy: {model.accuracy === null ? "N/A" : `${(model.accuracy * 100).toFixed(2)}%`} ({model.evaluated_samples} labeled samples)
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Last trained (IST): {formatIst(model.last_trained_at)} | Runs: {model.successful_training_runs}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

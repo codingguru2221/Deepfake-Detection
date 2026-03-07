@@ -5,7 +5,7 @@ import logging
 import re
 import threading
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 from urllib.error import URLError
@@ -13,7 +13,25 @@ from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
+from deepfake_detector.utils.timezone import IST, now_ist_iso
+
 logger = logging.getLogger(__name__)
+
+DEEPFAKE_KEYWORDS = {
+    "deepfake",
+    "faceforensics",
+    "dfdc",
+    "forgery",
+    "manipulated face",
+    "fakeavceleb",
+    "celeb-df",
+    "deeperforensics",
+    "asvspoof",
+    "voice spoof",
+    "face swap",
+    "synthetic voice",
+}
+DATASET_KEYWORDS = {"dataset", "benchmark", "corpus", "data", "samples"}
 
 
 @dataclass(frozen=True)
@@ -27,14 +45,34 @@ class DatasetRecord:
     license: str | None = None
 
 
-def _to_utc_iso(value: str | None) -> str | None:
+def _normalize_text(value: str | None) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def _is_genuine_deepfake_dataset(record: DatasetRecord) -> bool:
+    blob = " ".join(
+        [
+            _normalize_text(record.title),
+            _normalize_text(record.summary),
+            _normalize_text(" ".join(record.tags or [])),
+            _normalize_text(record.url),
+        ]
+    )
+    if not blob:
+        return False
+    has_deepfake_signal = any(k in blob for k in DEEPFAKE_KEYWORDS)
+    has_dataset_signal = any(k in blob for k in DATASET_KEYWORDS)
+    return has_deepfake_signal and has_dataset_signal
+
+
+def _to_ist_iso(value: str | None) -> str | None:
     if not value:
         return None
     try:
         if value.endswith("Z"):
             value = value[:-1] + "+00:00"
         dt = datetime.fromisoformat(value)
-        return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+        return dt.astimezone(IST).replace(microsecond=0).isoformat()
     except ValueError:
         return value
 
@@ -94,7 +132,7 @@ def fetch_figshare(max_items: int, timeout: float, search_query: str) -> list[Da
                 title=title,
                 url=link,
                 summary=str(item.get("description", "")).strip() or None,
-                published_at=_to_utc_iso(str(item.get("published_date", "")).strip() or None),
+                published_at=_to_ist_iso(str(item.get("published_date", "")).strip() or None),
                 tags=None,
                 license=None,
             )
@@ -141,7 +179,7 @@ def fetch_zenodo(max_items: int, timeout: float, search_query: str) -> list[Data
                 title=title,
                 url=link,
                 summary=str(descriptions).strip() or None,
-                published_at=_to_utc_iso(str(metadata.get("publication_date", "")).strip() or None),
+                published_at=_to_ist_iso(str(metadata.get("publication_date", "")).strip() or None),
                 tags=[str(tag) for tag in tags] if isinstance(tags, list) else None,
                 license=str(license_info.get("id", "")).strip() if isinstance(license_info, dict) else None,
             )
@@ -179,7 +217,7 @@ def fetch_arxiv(max_items: int, timeout: float, search_query: str) -> list[Datas
                 title=title,
                 url=link,
                 summary=summary or None,
-                published_at=_to_utc_iso(published or None),
+                published_at=_to_ist_iso(published or None),
                 tags=["research"],
                 license=None,
             )
@@ -242,21 +280,23 @@ class DatasetCrawler:
     def should_refresh(self) -> bool:
         if not self.output_file.exists():
             return True
-        modified = datetime.fromtimestamp(self.output_file.stat().st_mtime, tz=timezone.utc)
-        age = datetime.now(tz=timezone.utc) - modified
+        modified = datetime.fromtimestamp(self.output_file.stat().st_mtime, tz=IST)
+        age = datetime.now(tz=IST) - modified
         return age > timedelta(hours=self.refresh_hours)
 
     def crawl_once(self) -> int:
-        source_limit = max(1, self.max_items // 4)
+        source_limit = self.max_items
         sources: list[tuple[str, Callable[[int, float, str], list[DatasetRecord]]]] = [
             ("kaggle", fetch_kaggle),
             ("figshare", fetch_figshare),
             ("zenodo", fetch_zenodo),
-            ("arxiv", fetch_arxiv),
         ]
 
-        all_records: list[DatasetRecord] = []
+        all_records: list[DatasetRecord] = [r for r in self._load_existing_records() if _is_genuine_deepfake_dataset(r)]
+        rejected = 0
         dedupe: set[tuple[str, str]] = set()
+        for rec in all_records:
+            dedupe.add((rec.source, rec.url))
         for source_name, fetcher in sources:
             if self.stop_event and self.stop_event.is_set():
                 break
@@ -268,6 +308,9 @@ class DatasetCrawler:
             for record in records:
                 if self.stop_event and self.stop_event.is_set():
                     break
+                if not _is_genuine_deepfake_dataset(record):
+                    rejected += 1
+                    continue
                 key = (record.source, record.url)
                 if key in dedupe:
                     continue
@@ -278,14 +321,50 @@ class DatasetCrawler:
             if len(all_records) >= self.max_items:
                 break
 
-        self._write_catalog(all_records[: self.max_items])
+        self._write_catalog(all_records[: self.max_items], rejected_count=rejected)
         return len(all_records)
 
-    def _write_catalog(self, records: list[DatasetRecord]) -> None:
+    def _load_existing_records(self) -> list[DatasetRecord]:
+        if not self.output_file.exists():
+            return []
+        try:
+            payload = json.loads(self.output_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        items = payload.get("items", []) if isinstance(payload, dict) else []
+        if not isinstance(items, list):
+            return []
+        records: list[DatasetRecord] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            source = str(it.get("source", "")).strip()
+            title = str(it.get("title", "")).strip()
+            url = str(it.get("url", "")).strip()
+            if not source or not title or not url:
+                continue
+            records.append(
+                DatasetRecord(
+                    source=source,
+                    title=title,
+                    url=url,
+                    summary=str(it.get("summary", "")).strip() or None,
+                    published_at=str(it.get("published_at", "")).strip() or None,
+                    tags=[str(t) for t in it.get("tags", [])] if isinstance(it.get("tags"), list) else None,
+                    license=str(it.get("license", "")).strip() or None,
+                )
+            )
+            if len(records) >= self.max_items:
+                break
+        return records
+
+    def _write_catalog(self, records: list[DatasetRecord], rejected_count: int = 0) -> None:
         payload = {
-            "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "generated_at": now_ist_iso(),
             "query": self.search_query,
             "count": len(records),
+            "genuine_count": len(records),
+            "rejected_count": int(max(0, rejected_count)),
             "items": [asdict(r) for r in records],
         }
         self.output_file.parent.mkdir(parents=True, exist_ok=True)

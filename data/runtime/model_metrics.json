@@ -1,0 +1,34 @@
+{
+  "updated_at": "2026-03-07T22:36:47+05:30",
+  "models": {
+    "image": {
+      "trained_data_points": 1300,
+      "accuracy": null,
+      "evaluated_samples": 0,
+      "last_trained_at": "2026-03-07T22:01:15+05:30",
+      "successful_training_runs": 25
+    },
+    "video": {
+      "trained_data_points": 1300,
+      "accuracy": null,
+      "evaluated_samples": 0,
+      "last_trained_at": "2026-03-07T22:01:15+05:30",
+      "successful_training_runs": 25
+    },
+    "audio": {
+      "trained_data_points": 1300,
+      "accuracy": null,
+      "evaluated_samples": 0,
+      "last_trained_at": "2026-03-07T22:01:15+05:30",
+      "successful_training_runs": 25
+    },
+    "multimodal": {
+      "trained_data_points": 1300,
+      "accuracy": null,
+      "evaluated_samples": 0,
+      "last_trained_at": "2026-03-07T22:01:15+05:30",
+      "successful_training_runs": 25
+    }
+  },
+  "last_training_data_fingerprint": "3d9712588746deebc0521b9605cf9c554daa4908890f8287865713acb1a105b5"
+}

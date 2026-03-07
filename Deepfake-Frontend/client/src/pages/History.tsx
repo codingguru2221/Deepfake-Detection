@@ -1,8 +1,8 @@
-import { format } from "date-fns";
 import { History as HistoryIcon, FileImage, FileVideo, FileAudio, Zap, Trash2 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { formatIst } from "@/lib/time";
 
 export default function History() {
   const { history, clearHistory } = useStore();
@@ -58,7 +58,7 @@ export default function History() {
                   return (
                     <tr key={item.id} className="hover:bg-accent/30 transition-colors">
                       <td className="px-6 py-4 font-mono text-xs whitespace-nowrap text-muted-foreground">
-                        {format(new Date(item.timestamp), "MMM dd, HH:mm:ss")}
+                        {formatIst(item.timestamp)}
                       </td>
                       <td className="px-6 py-4 font-medium max-w-[200px] truncate" title={item.filename}>
                         {item.filename}

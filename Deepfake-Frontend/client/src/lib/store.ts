@@ -13,18 +13,66 @@ export interface PredictionResult {
 export interface CrawlerStatus {
   enabled: boolean;
   running: boolean;
+  crawl_cycle_running?: boolean;
+  service_running?: boolean;
   last_run: string | null;
   last_error: string | null;
   records: number;
+  genuine_records?: number;
   output: string;
   log?: string;
+  auto_train_enabled?: boolean;
+  auto_train_min_records?: number;
 }
 
 export interface RuntimeTrainingStatus {
   running: boolean;
   last_run: string | null;
   last_error: string | null;
-  last_result: Record<string, any> | null;
+  last_result: {
+    status: string;
+    reason?: string | null;
+    manifest_path?: string;
+    calibrator_path?: string | null;
+    user_labeled_count?: number;
+    pseudo_count?: number;
+    crawler_refs_count?: number;
+    trainable_samples?: number;
+    calibrator_accuracy?: number | null;
+    calibrator_auc?: number | null;
+  } | null;
+}
+
+export interface ModelStatus {
+  label: string;
+  parameter_count: number;
+  parameter_summary: string;
+  trained_data_points: number;
+  accuracy: number | null;
+  evaluated_samples: number;
+  last_trained_at: string | null;
+  successful_training_runs: number;
+  model_available: boolean;
+}
+
+export interface HealthResponse {
+  status: string;
+  modelFiles: Record<string, boolean>;
+  models: Record<string, ModelStatus>;
+  datasetCrawler: CrawlerStatus;
+  runtimeLearning: {
+    enabled: boolean;
+    training: RuntimeTrainingStatus;
+    fullTraining?: {
+      enabled: boolean;
+      status: {
+        running: boolean;
+        last_run: string | null;
+        last_error: string | null;
+        last_result: Record<string, any> | null;
+      };
+    };
+  };
 }
 
 export interface HistoryItem {
@@ -73,6 +121,12 @@ export const api = {
     } catch {
       return false;
     }
+  },
+
+  getHealth: async (baseUrl: string): Promise<HealthResponse> => {
+    const res = await fetch(`${baseUrl}/health`, { method: 'GET' });
+    if (!res.ok) throw new Error(`Failed to fetch health (${res.status})`);
+    return await res.json();
   },
 
   infer: async (baseUrl: string, modality: Modality, file: File): Promise<PredictionResult> => {

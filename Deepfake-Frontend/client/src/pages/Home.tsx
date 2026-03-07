@@ -37,7 +37,7 @@ export default function Home() {
 
   const stats = [
     { label: "Models Loaded", value: "3/3", status: "Active" },
-    { label: "Crawler State", value: crawler.running ? "Running" : (crawler.enabled ? "Idle" : "Off"), status: crawler.last_error ? "Attention" : "Healthy" },
+    { label: "Crawler State", value: crawler.running ? (crawler.crawl_cycle_running ? "Running (Crawling)" : "Running (Standby)") : (crawler.enabled ? "Idle" : "Off"), status: crawler.last_error ? "Attention" : "Healthy" },
     { label: "Crawler Records", value: String(crawler.records || 0), status: crawler.last_run ? "Updated" : "Pending" },
   ];
 
@@ -114,4 +114,3 @@ export default function Home() {
     </div>
   );
 }
-

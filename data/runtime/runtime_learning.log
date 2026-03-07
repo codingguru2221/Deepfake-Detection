@@ -2,3 +2,104 @@
 2026-03-07T15:53:15+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=30
 2026-03-07T15:54:33+00:00 calibrator_skipped reason=insufficient_labeled_data
 2026-03-07T15:54:33+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=30
+2026-03-07T16:07:51+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:07:51+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:07:51+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:11:59+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:11:59+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:11:59+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:03+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:03+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:03+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:05+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:05+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:05+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:06+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:06+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:06+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:06+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:06+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:06+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:07+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:07+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:07+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:13+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:13+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:13+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:20+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:20+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:20+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:21+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:21+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:21+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:21+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:21+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:21+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:28+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:28+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:28+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:12:29+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:12:29+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:12:29+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:13:54+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:13:54+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:13:54+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:13:57+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:13:57+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:13:57+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:13:58+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:13:58+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:13:58+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:02+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:02+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:02+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:03+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:03+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:03+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:04+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:04+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:04+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:10+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:10+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:10+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:11+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:11+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:11+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:14:12+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:14:12+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:14:12+00:00 model_metrics_updated trained_increment=50
+2026-03-07T16:16:17+00:00 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T16:16:17+00:00 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T16:16:17+00:00 model_metrics_updated trained_increment=50
+2026-03-07T21:58:25+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T21:58:25+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T21:58:25+05:30 model_metrics_updated trained_increment=50
+2026-03-07T21:58:29+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T21:58:29+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T21:58:29+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T21:58:32+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T21:58:32+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=50
+2026-03-07T21:58:33+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:01:15+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:01:15+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:01:15+05:30 model_metrics_updated trained_increment=100
+2026-03-07T22:19:24+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:19:24+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:19:24+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:19:29+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:19:29+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:19:29+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:19:34+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:19:34+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:19:34+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:19:37+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:19:37+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:19:37+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:19:42+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:19:42+05:30 training_done user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:19:42+05:30 model_metrics_skipped reason=duplicate_training_data
+2026-03-07T22:36:47+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-07T22:36:47+05:30 training_done status=skipped reason=insufficient_labeled_data user_labeled=0 pseudo=0 crawler_refs=100
+2026-03-07T22:38:02+05:30 sample_saved id=0194d73bc8974c5fbadc14dfb4e4333d modality=image prediction=real
+2026-03-07T22:38:32+05:30 sample_saved id=889ff6c113ef46b5876d9b88182ab181 modality=image prediction=deepfake
+2026-03-07T22:38:54+05:30 sample_saved id=47f114f969734abeaa6bb1853161062e modality=image prediction=deepfake
