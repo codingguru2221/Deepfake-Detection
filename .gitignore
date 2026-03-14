@@ -4,7 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 .ipynb_checkpoints/
-build/
+
 dist/
 *.egg-info/
 logs/
@@ -12,7 +12,7 @@ artifacts/
 data/raw/
 data/processed/
 models/checkpoints/
-models/exports/
+
 *.h5
 *.pt
 *.pkl

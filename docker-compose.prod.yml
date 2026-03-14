@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      DF_CRAWLER_ENABLED: "0"
+      DF_RUNTIME_LEARNING_ENABLED: "0"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./Deepfake-Frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://backend:8000
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+    depends_on:
+      - backend
+    restart: unless-stopped

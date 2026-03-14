@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 
 from deepfake_detector.data.auto_dataset_training import run_full_auto_training
 from deepfake_detector.data.runtime_learning import RuntimeLearningManager
+from deepfake_detector.integrations import aws_rekognition
+from deepfake_detector.integrations import hf_deepfake
 from deepfake_detector.integrations import bitmind
 from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
 from deepfake_detector.utils.timezone import IST, now_ist_iso
@@ -43,6 +45,8 @@ MAX_RUNTIME_SAMPLE_MB = float(os.getenv("DF_RUNTIME_MAX_SAMPLE_MB", "50"))
 BITMIND_ENABLED = os.getenv("BITMIND_ENABLED", "0").lower() not in {"0", "false", "no"} and bitmind.is_enabled()
 BITMIND_VERIFY_ON_INFER = os.getenv("BITMIND_VERIFY_ON_INFER", "1").lower() not in {"0", "false", "no"}
 BITMIND_RICH = os.getenv("BITMIND_RICH", "0").lower() not in {"0", "false", "no"}
+AWS_REKOGNITION_ENABLED = os.getenv("AWS_REKOGNITION_ENABLED", "0").lower() not in {"0", "false", "no"} and aws_rekognition.is_enabled()
+HF_DEEPFAKE_ENABLED = hf_deepfake.is_enabled()
 
 # Conservative thresholds to reduce false positives.
 DF_IMAGE_FAKE_THRESHOLD = float(os.getenv("DF_IMAGE_FAKE_THRESHOLD", "0.6"))
@@ -458,8 +462,8 @@ def _infer_funcs():
 @app.get("/health")
 def health() -> dict:
     availability = {
-        "image": IMAGE_MODEL_PATH.exists(),
-        "video": VIDEO_MODEL_PATH.exists(),
+        "image": IMAGE_MODEL_PATH.exists() or AWS_REKOGNITION_ENABLED or HF_DEEPFAKE_ENABLED,
+        "video": VIDEO_MODEL_PATH.exists() or AWS_REKOGNITION_ENABLED or HF_DEEPFAKE_ENABLED,
         "audio": AUDIO_MODEL_PATH.exists(),
         "multimodal": True,
     }
@@ -475,6 +479,15 @@ def health() -> dict:
                 "enabled": AUTO_FULL_MODEL_TRAIN_ENABLED,
                 "status": _full_train_status,
             },
+        },
+        "awsRekognition": {
+            "enabled": AWS_REKOGNITION_ENABLED,
+            "region": os.getenv("AWS_REGION", "us-east-1"),
+            "projectVersionArn": os.getenv("AWS_REKOGNITION_PROJECT_VERSION_ARN"),
+        },
+        "hfDeepfake": {
+            "enabled": HF_DEEPFAKE_ENABLED,
+            "modelId": os.getenv("HF_DEEPFAKE_MODEL_ID", "prithivMLmods/deepfake-detector-model-v1"),
         },
     }
 
@@ -553,11 +566,22 @@ def runtime_train(payload: RuntimeTrainRequest) -> dict:
 @app.post("/infer/image")
 def infer_image(file: UploadFile = File(...)) -> dict:
     _, _, predict_image, _ = _infer_funcs()
-    if not IMAGE_MODEL_PATH.exists():
+    if not HF_DEEPFAKE_ENABLED and not AWS_REKOGNITION_ENABLED and not IMAGE_MODEL_PATH.exists():
         raise HTTPException(status_code=503, detail=f"Image model not found: {IMAGE_MODEL_PATH}")
     tmp = _save_upload(file)
     try:
-        raw_prob = float(predict_image(tmp, IMAGE_MODEL_PATH))
+        if HF_DEEPFAKE_ENABLED:
+            hf_result = hf_deepfake.detect_image_file(tmp)
+            aws_result = None
+            raw_prob = float(hf_result["prob_fake"])
+        elif AWS_REKOGNITION_ENABLED:
+            hf_result = None
+            aws_result = aws_rekognition.detect_image_bytes(tmp.read_bytes())
+            raw_prob = float(aws_result["prob_fake"])
+        else:
+            hf_result = None
+            aws_result = None
+            raw_prob = float(predict_image(tmp, IMAGE_MODEL_PATH))
         prob, inverted = _maybe_invert_prob(raw_prob, "image")
         prob = _apply_calibration(prob, "image")
         details = {
@@ -567,6 +591,10 @@ def infer_image(file: UploadFile = File(...)) -> dict:
             "raw_prob_fake_raw": raw_prob,
             "prob_inverted": inverted,
         }
+        if hf_result:
+            details["hf_deepfake"] = hf_result
+        if aws_result:
+            details["aws_rekognition"] = aws_result
         if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
             try:
                 bm = bitmind.detect_image_bytes(
@@ -601,11 +629,22 @@ def infer_image(file: UploadFile = File(...)) -> dict:
 @app.post("/infer/video")
 def infer_video(file: UploadFile = File(...)) -> dict:
     _, _, _, predict_video = _infer_funcs()
-    if not VIDEO_MODEL_PATH.exists():
+    if not HF_DEEPFAKE_ENABLED and not AWS_REKOGNITION_ENABLED and not VIDEO_MODEL_PATH.exists():
         raise HTTPException(status_code=503, detail=f"Video model not found: {VIDEO_MODEL_PATH}")
     tmp = _save_upload(file)
     try:
-        raw_prob = float(predict_video(tmp, VIDEO_MODEL_PATH))
+        if HF_DEEPFAKE_ENABLED:
+            hf_result = hf_deepfake.detect_video_file(tmp)
+            aws_result = None
+            raw_prob = float(hf_result["prob_fake"])
+        elif AWS_REKOGNITION_ENABLED:
+            hf_result = None
+            aws_result = aws_rekognition.detect_video_file(tmp)
+            raw_prob = float(aws_result["prob_fake"])
+        else:
+            hf_result = None
+            aws_result = None
+            raw_prob = float(predict_video(tmp, VIDEO_MODEL_PATH))
         prob, inverted = _maybe_invert_prob(raw_prob, "video")
         prob = _apply_calibration(prob, "video")
         details = {
@@ -615,6 +654,10 @@ def infer_video(file: UploadFile = File(...)) -> dict:
             "raw_prob_fake_raw": raw_prob,
             "prob_inverted": inverted,
         }
+        if hf_result:
+            details["hf_deepfake"] = hf_result
+        if aws_result:
+            details["aws_rekognition"] = aws_result
         if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
             try:
                 bm = bitmind.detect_video_file(
