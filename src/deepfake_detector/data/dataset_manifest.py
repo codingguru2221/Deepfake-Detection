@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
+
+import re
 
 from deepfake_detector.utils.io import write_json
 
@@ -11,10 +13,28 @@ AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a"}
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
+_FAKE_TOKENS = {"fake", "deepfake", "manipulated", "synthesis", "synthetic", "generated", "ai", "spoof", "forged"}
+_REAL_TOKENS = {"real", "original", "authentic", "bonafide", "genuine", "live"}
+
+
+def _tokenize_path(path: Path) -> list[str]:
+    parts = []
+    for part in path.parts:
+        for tok in re.split(r"[^a-zA-Z0-9]+", part.lower()):
+            if tok:
+                parts.append(tok)
+    return parts
+
+
 def _label_from_path(path: Path) -> int:
-    text = str(path).lower()
-    fake_tags = ["fake", "deepfake", "manipulated", "synthesis"]
-    return int(any(tag in text for tag in fake_tags))
+    tokens = _tokenize_path(path)
+    last_real = max((i for i, t in enumerate(tokens) if t in _REAL_TOKENS), default=-1)
+    last_fake = max((i for i, t in enumerate(tokens) if t in _FAKE_TOKENS), default=-1)
+    if last_real == -1 and last_fake == -1:
+        return 0
+    if last_fake > last_real:
+        return 1
+    return 0
 
 
 def _scan_files(root: Path, extensions: set[str]) -> List[Path]:

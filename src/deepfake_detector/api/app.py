@@ -162,6 +162,21 @@ def _apply_calibration(prob_fake: float, modality: str) -> float:
         return prob_fake
 
 
+def _maybe_invert_prob(prob_fake: float, modality: str) -> tuple[float, bool]:
+    invert_any = os.getenv("DF_INVERT_PROB", "0").lower() in {"1", "true", "yes"}
+    per_modality = {
+        "image": "DF_INVERT_IMAGE_PROB",
+        "video": "DF_INVERT_VIDEO_PROB",
+        "audio": "DF_INVERT_AUDIO_PROB",
+        "multimodal": "DF_INVERT_MULTIMODAL_PROB",
+    }
+    flag = per_modality.get(modality)
+    invert = invert_any or (flag and os.getenv(flag, "0").lower() in {"1", "true", "yes"})
+    if invert:
+        return 1.0 - prob_fake, True
+    return prob_fake, False
+
+
 def _start_dataset_crawler(force: bool = False) -> bool:
     if not _crawler_status["enabled"]:
         return False
@@ -543,8 +558,15 @@ def infer_image(file: UploadFile = File(...)) -> dict:
     tmp = _save_upload(file)
     try:
         raw_prob = float(predict_image(tmp, IMAGE_MODEL_PATH))
-        prob = _apply_calibration(raw_prob, "image")
-        details = {"modality": "image", "filename": file.filename, "raw_prob_fake": raw_prob}
+        prob, inverted = _maybe_invert_prob(raw_prob, "image")
+        prob = _apply_calibration(prob, "image")
+        details = {
+            "modality": "image",
+            "filename": file.filename,
+            "raw_prob_fake": prob,
+            "raw_prob_fake_raw": raw_prob,
+            "prob_inverted": inverted,
+        }
         if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
             try:
                 bm = bitmind.detect_image_bytes(
@@ -584,8 +606,15 @@ def infer_video(file: UploadFile = File(...)) -> dict:
     tmp = _save_upload(file)
     try:
         raw_prob = float(predict_video(tmp, VIDEO_MODEL_PATH))
-        prob = _apply_calibration(raw_prob, "video")
-        details = {"modality": "video", "filename": file.filename, "raw_prob_fake": raw_prob}
+        prob, inverted = _maybe_invert_prob(raw_prob, "video")
+        prob = _apply_calibration(prob, "video")
+        details = {
+            "modality": "video",
+            "filename": file.filename,
+            "raw_prob_fake": prob,
+            "raw_prob_fake_raw": raw_prob,
+            "prob_inverted": inverted,
+        }
         if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
             try:
                 bm = bitmind.detect_video_file(
@@ -625,8 +654,18 @@ def infer_audio(file: UploadFile = File(...)) -> dict:
     tmp = _save_upload(file, suffix=".wav")
     try:
         raw_prob = float(predict_audio(tmp, AUDIO_MODEL_PATH))
-        prob = _apply_calibration(raw_prob, "audio")
-        result = _as_result(prob, {"modality": "audio", "filename": file.filename, "raw_prob_fake": raw_prob})
+        prob, inverted = _maybe_invert_prob(raw_prob, "audio")
+        prob = _apply_calibration(prob, "audio")
+        result = _as_result(
+            prob,
+            {
+                "modality": "audio",
+                "filename": file.filename,
+                "raw_prob_fake": prob,
+                "raw_prob_fake_raw": raw_prob,
+                "prob_inverted": inverted,
+            },
+        )
         if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
             sample = _runtime_trainer.save_inference_sample(
                 source_path=tmp,
@@ -656,12 +695,18 @@ def infer_multimodal(file: UploadFile = File(...)) -> dict:
 
     try:
         if suffix in {".jpg", ".jpeg", ".png", ".bmp"} and IMAGE_MODEL_PATH.exists():
-            image_prob = predict_image(tmp, IMAGE_MODEL_PATH)
+            image_raw = predict_image(tmp, IMAGE_MODEL_PATH)
+            image_prob, inv = _maybe_invert_prob(float(image_raw), "image")
+            details["image_prob_inverted"] = inv
         elif suffix in {".wav", ".mp3", ".flac", ".m4a"} and AUDIO_MODEL_PATH.exists():
-            audio_prob = predict_audio(tmp, AUDIO_MODEL_PATH)
+            audio_raw = predict_audio(tmp, AUDIO_MODEL_PATH)
+            audio_prob, inv = _maybe_invert_prob(float(audio_raw), "audio")
+            details["audio_prob_inverted"] = inv
         elif suffix in {".mp4", ".avi", ".mov", ".mkv"}:
             if VIDEO_MODEL_PATH.exists():
-                video_prob = predict_video(tmp, VIDEO_MODEL_PATH)
+                video_raw = predict_video(tmp, VIDEO_MODEL_PATH)
+                video_prob, inv = _maybe_invert_prob(float(video_raw), "video")
+                details["video_prob_inverted"] = inv
 
             # Attempt audio branch for video if audio model exists.
             if AUDIO_MODEL_PATH.exists():
@@ -672,16 +717,21 @@ def infer_multimodal(file: UploadFile = File(...)) -> dict:
                         AudioSegment.from_file(tmp).set_channels(1).set_frame_rate(16000).export(
                             wav_tmp.name, format="wav"
                         )
-                        audio_prob = predict_audio(Path(wav_tmp.name), AUDIO_MODEL_PATH)
+                        audio_raw = predict_audio(Path(wav_tmp.name), AUDIO_MODEL_PATH)
+                        audio_prob, inv = _maybe_invert_prob(float(audio_raw), "audio")
+                        details["audio_prob_inverted"] = inv
                     Path(wav_tmp.name).unlink(missing_ok=True)
                 except Exception:
                     details["audio_from_video"] = "failed"
         else:
             raise HTTPException(status_code=400, detail="Unsupported file for multimodal inference.")
 
-        fused_prob = float(fuse(image_prob, video_prob, audio_prob))
+        fused_raw = float(fuse(image_prob, video_prob, audio_prob))
+        fused_prob, fused_inverted = _maybe_invert_prob(fused_raw, "multimodal")
         final_prob = _apply_calibration(fused_prob, "multimodal")
         details["raw_prob_fake"] = fused_prob
+        details["raw_prob_fake_raw"] = fused_raw
+        details["prob_inverted"] = fused_inverted
         result = _as_result(final_prob, details)
         result["modalityScores"] = {
             "image": image_prob,

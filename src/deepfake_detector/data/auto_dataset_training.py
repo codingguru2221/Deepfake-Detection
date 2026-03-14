@@ -14,7 +14,7 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 VIDEO_FRAME_EXTS = IMAGE_EXTS
 
-POSITIVE_LABEL_HINTS = {"deepfake", "fake", "spoof", "forged", "tampered", "manipulated", "synthetic"}
+POSITIVE_LABEL_HINTS = {"deepfake", "fake", "spoof", "forged", "tampered", "manipulated", "synthetic", "generated", "ai"}
 NEGATIVE_LABEL_HINTS = {"real", "original", "authentic", "bonafide", "genuine", "live"}
 
 
@@ -46,13 +46,22 @@ def _extract_kaggle_slug(url: str) -> str | None:
     return m.group(1)
 
 
+def _tokenize_path(path: Path) -> list[str]:
+    tokens: list[str] = []
+    for part in path.parts:
+        for tok in re.split(r"[^a-zA-Z0-9]+", part.lower()):
+            if tok:
+                tokens.append(tok)
+    return tokens
+
+
 def _infer_label(path: Path) -> int | None:
-    text = str(path).lower()
-    if any(tok in text for tok in POSITIVE_LABEL_HINTS):
-        return 1
-    if any(tok in text for tok in NEGATIVE_LABEL_HINTS):
-        return 0
-    return None
+    tokens = _tokenize_path(path)
+    last_fake = max((i for i, t in enumerate(tokens) if t in POSITIVE_LABEL_HINTS), default=-1)
+    last_real = max((i for i, t in enumerate(tokens) if t in NEGATIVE_LABEL_HINTS), default=-1)
+    if last_fake == -1 and last_real == -1:
+        return None
+    return 1 if last_fake > last_real else 0
 
 
 def _is_video_frame_name(path: Path) -> bool:
