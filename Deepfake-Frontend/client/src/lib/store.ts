@@ -83,8 +83,19 @@ export interface HistoryItem {
   result: PredictionResult;
 }
 
-// Ensure default respects env vars in production
-const defaultApiUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+function getDefaultApiUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+
+  if (typeof window !== 'undefined') {
+    return '/api';
+  }
+
+  return 'http://localhost:8000';
+}
+
+const defaultApiUrl = getDefaultApiUrl();
 
 interface AppState {
   apiBaseUrl: string;
