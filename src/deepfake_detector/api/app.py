@@ -459,6 +459,24 @@ def _infer_funcs():
     return _fuse, _predict_audio, _predict_image, _predict_video
 
 
+def _attach_runtime_sample_if_possible(result: dict, tmp: Path, modality: str) -> None:
+    if not RUNTIME_LEARNING_ENABLED or not tmp.exists():
+        return
+    if (tmp.stat().st_size / (1024 * 1024)) > MAX_RUNTIME_SAMPLE_MB:
+        return
+    try:
+        sample = _runtime_trainer.save_inference_sample(
+            source_path=tmp,
+            modality=modality,
+            prediction=result["prediction"],
+            prob_fake=result["prob_fake"],
+            confidence=result["confidence"],
+        )
+        result.setdefault("details", {})["sample_id"] = sample["sample_id"]
+    except Exception as exc:
+        result.setdefault("details", {})["runtime_sample_error"] = str(exc)
+
+
 @app.get("/health")
 def health() -> dict:
     availability = {
@@ -610,15 +628,7 @@ def infer_image(file: UploadFile = File(...)) -> dict:
             except Exception as exc:
                 details["bitmind_error"] = str(exc)
         result = _as_result(prob, details)
-        if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
-            sample = _runtime_trainer.save_inference_sample(
-                source_path=tmp,
-                modality="image",
-                prediction=result["prediction"],
-                prob_fake=result["prob_fake"],
-                confidence=result["confidence"],
-            )
-            result["details"]["sample_id"] = sample["sample_id"]
+        _attach_runtime_sample_if_possible(result, tmp, "image")
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Image inference failed: {exc}") from exc
@@ -673,15 +683,7 @@ def infer_video(file: UploadFile = File(...)) -> dict:
             except Exception as exc:
                 details["bitmind_error"] = str(exc)
         result = _as_result(prob, details)
-        if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
-            sample = _runtime_trainer.save_inference_sample(
-                source_path=tmp,
-                modality="video",
-                prediction=result["prediction"],
-                prob_fake=result["prob_fake"],
-                confidence=result["confidence"],
-            )
-            result["details"]["sample_id"] = sample["sample_id"]
+        _attach_runtime_sample_if_possible(result, tmp, "video")
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Video inference failed: {exc}") from exc
@@ -709,15 +711,7 @@ def infer_audio(file: UploadFile = File(...)) -> dict:
                 "prob_inverted": inverted,
             },
         )
-        if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
-            sample = _runtime_trainer.save_inference_sample(
-                source_path=tmp,
-                modality="audio",
-                prediction=result["prediction"],
-                prob_fake=result["prob_fake"],
-                confidence=result["confidence"],
-            )
-            result["details"]["sample_id"] = sample["sample_id"]
+        _attach_runtime_sample_if_possible(result, tmp, "audio")
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Audio inference failed: {exc}") from exc
@@ -781,15 +775,7 @@ def infer_multimodal(file: UploadFile = File(...)) -> dict:
             "video": video_prob,
             "audio": audio_prob,
         }
-        if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
-            sample = _runtime_trainer.save_inference_sample(
-                source_path=tmp,
-                modality="multimodal",
-                prediction=result["prediction"],
-                prob_fake=result["prob_fake"],
-                confidence=result["confidence"],
-            )
-            result["details"]["sample_id"] = sample["sample_id"]
+        _attach_runtime_sample_if_possible(result, tmp, "multimodal")
         return result
     except HTTPException:
         raise
