@@ -84,12 +84,12 @@ export interface HistoryItem {
 }
 
 function getDefaultApiUrl() {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-
   if (typeof window !== 'undefined') {
     return '/api';
+  }
+
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
   }
 
   return 'http://localhost:8000';
