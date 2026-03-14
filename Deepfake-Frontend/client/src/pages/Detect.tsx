@@ -288,6 +288,8 @@ export default function Detect() {
                 <div className="flex flex-col items-center justify-center p-8 rounded-xl border border-border bg-secondary/20 relative overflow-hidden">
                   {result.prediction === 'deepfake' ? (
                     <div className="absolute inset-0 bg-destructive/5" />
+                  ) : result.prediction === 'uncertain' ? (
+                    <div className="absolute inset-0 bg-amber-500/5" />
                   ) : (
                     <div className="absolute inset-0 bg-primary/5" />
                   )}
@@ -296,10 +298,19 @@ export default function Detect() {
                     <div className="text-sm font-mono text-muted-foreground uppercase tracking-widest">Final Verdict</div>
                     <div className={cn(
                       "text-5xl font-display font-bold tracking-tight uppercase",
-                      result.prediction === 'deepfake' ? "text-destructive" : "text-primary"
+                      result.prediction === 'deepfake'
+                        ? "text-destructive"
+                        : result.prediction === 'uncertain'
+                        ? "text-amber-400"
+                        : "text-primary"
                     )}>
                       {result.prediction}
                     </div>
+                    {result.prediction === 'uncertain' && (
+                      <div className="text-xs font-mono text-muted-foreground pt-2">
+                        Low confidence zone. Please verify and submit feedback.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -313,6 +324,18 @@ export default function Detect() {
                     <div className="text-2xl font-mono">{(result.confidence * 100).toFixed(1)}%</div>
                   </div>
                 </div>
+
+                {result.details?.bitmind_verdict && (
+                  <div className="p-4 rounded-lg border border-border bg-card flex items-center justify-between">
+                    <div className="text-xs font-mono text-muted-foreground">Local vs BitMind</div>
+                    <div className={cn(
+                      "text-sm font-mono uppercase",
+                      result.prediction === result.details.bitmind_verdict ? "text-primary" : "text-destructive"
+                    )}>
+                      {result.prediction === result.details.bitmind_verdict ? "AGREE" : "DISAGREE"}
+                    </div>
+                  </div>
+                )}
 
                 {/* Multimodal Details */}
                 {result.modalityScores && (
@@ -329,6 +352,51 @@ export default function Detect() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {(result.details?.bitmind || result.details?.bitmind_error) && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-mono text-muted-foreground border-b border-border pb-2">External Verification (BitMind)</h4>
+                    {result.details?.bitmind ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 rounded-lg border border-border bg-card">
+                          <div className="text-xs font-mono text-muted-foreground mb-1">Oracle Verdict</div>
+                          <div className={cn(
+                            "text-lg font-mono uppercase",
+                            result.details.bitmind_verdict === "deepfake" ? "text-destructive" : "text-primary"
+                          )}>
+                            {result.details.bitmind_verdict === "deepfake" ? "AI / Deepfake" : "Real"}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-lg border border-border bg-card">
+                          <div className="text-xs font-mono text-muted-foreground mb-1">Confidence</div>
+                          <div className="text-lg font-mono">
+                            {typeof result.details.bitmind_confidence === "number"
+                              ? `${(result.details.bitmind_confidence * 100).toFixed(1)}%`
+                              : "N/A"}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-lg border border-border bg-card">
+                          <div className="text-xs font-mono text-muted-foreground mb-1">Prediction</div>
+                          <div className="text-lg font-mono">
+                            {result.details.bitmind.prediction ?? "N/A"}
+                          </div>
+                        </div>
+                        <div className="p-4 rounded-lg border border-border bg-card">
+                          <div className="text-xs font-mono text-muted-foreground mb-1">Similarity</div>
+                          <div className="text-lg font-mono">
+                            {typeof result.details.bitmind.similarity === "number"
+                              ? `${(result.details.bitmind.similarity * 100).toFixed(1)}%`
+                              : "N/A"}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                        BitMind check failed: {result.details?.bitmind_error}
+                      </div>
+                    )}
                   </div>
                 )}
                 

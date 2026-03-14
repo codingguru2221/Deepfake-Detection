@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export type Modality = 'image' | 'video' | 'audio' | 'multimodal';
 
 export interface PredictionResult {
-  prediction: 'real' | 'deepfake';
+  prediction: 'real' | 'deepfake' | 'uncertain';
   prob_fake: number;
   confidence: number;
   details?: Record<string, any>;

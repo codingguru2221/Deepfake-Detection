@@ -39,6 +39,12 @@ export default function Settings() {
   const [isTrainingAction, setIsTrainingAction] = useState(false);
   const { toast } = useToast();
 
+  const formatAccuracy = (value: number | null) => (value === null ? "N/A" : `${(value * 100).toFixed(2)}%`);
+  const toPercent = (value: number | null) => {
+    if (value === null || Number.isNaN(value)) return 0;
+    return Math.max(0, Math.min(100, value * 100));
+  };
+
   useEffect(() => {
     setUrlInput(apiBaseUrl);
   }, [apiBaseUrl]);
@@ -280,7 +286,7 @@ export default function Settings() {
               <div className="text-sm text-muted-foreground">No model stats available yet.</div>
             ) : (
               modelRows.map(([key, model]) => (
-                <div key={key} className="p-4 rounded-xl border border-border bg-background/40 space-y-2">
+                <div key={key} className="p-4 rounded-xl border border-border bg-background/40 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="text-base">{model.label}</div>
                     <div className={`text-xs font-mono ${model.model_available ? "text-primary" : "text-destructive"}`}>
@@ -290,11 +296,43 @@ export default function Settings() {
                   <div className="text-xs text-muted-foreground">
                     Parameters: {model.parameter_count} ({model.parameter_summary})
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Trained data points: {model.trained_data_points}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Accuracy: {model.accuracy === null ? "N/A" : `${(model.accuracy * 100).toFixed(2)}%`} ({model.evaluated_samples} labeled samples)
+                  {model.accuracy === null ? (
+                    <div className="text-xs text-muted-foreground">Accuracy: Not evaluated yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Accuracy</span>
+                        <span>
+                          {formatAccuracy(model.accuracy)} ({model.evaluated_samples} labeled samples)
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted">
+                        <div
+                          className="h-2 rounded-full bg-primary transition-all"
+                          style={{ width: `${toPercent(model.accuracy)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Training data</span>
+                      <span>{model.trained_data_points} samples</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-emerald-500/80 transition-all"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            (model.trained_data_points / Math.max(1, crawler.auto_train_min_records || 100)) * 100,
+                          ).toFixed(2)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      Progress vs auto-train threshold: {crawler.auto_train_min_records || 100}
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Last trained (IST): {formatIst(model.last_trained_at)} | Runs: {model.successful_training_runs}

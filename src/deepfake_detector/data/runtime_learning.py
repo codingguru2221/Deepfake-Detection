@@ -4,12 +4,13 @@ import json
 import hashlib
 import shutil
 import threading
+from datetime import datetime
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from deepfake_detector.utils.timezone import now_ist_iso
+from deepfake_detector.utils.timezone import IST, now_ist_iso
 
 
 MODEL_SPECS: dict[str, dict[str, Any]] = {
@@ -337,11 +338,21 @@ class RuntimeLearningManager:
     def get_model_status(self, availability: dict[str, bool] | None = None) -> dict[str, dict[str, Any]]:
         payload = self._load_model_metrics()
         models = payload.get("models", {})
+        file_times = self._model_file_times()
         status: dict[str, dict[str, Any]] = {}
         for modality, spec in MODEL_SPECS.items():
             row = models.get(modality, {})
             if not isinstance(row, dict):
                 row = {}
+            last_trained_at = row.get("last_trained_at")
+            file_time = file_times.get(modality)
+            if file_time is not None:
+                if last_trained_at is None:
+                    last_trained_at = file_time
+                else:
+                    parsed = self._parse_iso(last_trained_at)
+                    if parsed is None or file_time > parsed:
+                        last_trained_at = file_time
             status[modality] = {
                 "label": spec["label"],
                 "parameter_count": spec["parameter_count"],
@@ -349,7 +360,7 @@ class RuntimeLearningManager:
                 "trained_data_points": int(row.get("trained_data_points", 0)),
                 "accuracy": row.get("accuracy"),
                 "evaluated_samples": int(row.get("evaluated_samples", 0)),
-                "last_trained_at": row.get("last_trained_at"),
+                "last_trained_at": last_trained_at,
                 "successful_training_runs": int(row.get("successful_training_runs", 0)),
                 "model_available": bool((availability or {}).get(modality, False)),
             }
@@ -493,3 +504,30 @@ class RuntimeLearningManager:
             sort_keys=True,
         )
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+    def _model_file_times(self) -> dict[str, datetime]:
+        model_paths = {
+            "image": self.project_root / "models" / "exports" / "image_tf_model.keras",
+            "video": self.project_root / "models" / "checkpoints" / "video_gru.pt",
+            "audio": self.project_root / "models" / "exports" / "audio_rf.joblib",
+            "multimodal": self.project_root / "models" / "exports" / "runtime_calibrator.joblib",
+        }
+        times: dict[str, datetime] = {}
+        for modality, path in model_paths.items():
+            if not path.exists():
+                continue
+            try:
+                mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=IST).replace(microsecond=0)
+                times[modality] = mtime
+            except OSError:
+                continue
+        return times
+
+    def _parse_iso(self, value: str) -> datetime | None:
+        try:
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=IST)
+            return parsed
+        except (TypeError, ValueError):
+            return None

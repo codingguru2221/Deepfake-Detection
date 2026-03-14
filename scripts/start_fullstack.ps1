@@ -1,7 +1,8 @@
 param(
   [string]$VenvPath = ".venv",
   [int]$BackendPort = 8000,
-  [int]$FrontendPort = 5000
+  [int]$FrontendPort = 5000,
+  [string]$BitmindApiKey = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +13,14 @@ if (!(Test-Path "$VenvPath/Scripts/Activate.ps1")) {
 
 . "$VenvPath/Scripts/Activate.ps1"
 $env:PYTHONPATH = "src"
+
+if ($BitmindApiKey -ne "") {
+  $env:BITMIND_API_KEY = $BitmindApiKey
+}
+if ($env:BITMIND_API_KEY) {
+  $env:BITMIND_ENABLED = "1"
+  $env:BITMIND_VERIFY_ON_INFER = "1"
+}
 
 Write-Host "[1/4] Checking Python API dependencies..."
 python -m pip install fastapi uvicorn python-multipart | Out-Null

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -40,6 +41,17 @@ class FaceDetector:
         return boxes
 
 
+def _maybe_resize(frame: np.ndarray) -> np.ndarray:
+    max_dim = int(os.getenv("DF_MAX_FRAME_DIM", "1024"))
+    h, w = frame.shape[:2]
+    scale = max(h, w) / max_dim
+    if scale <= 1.0:
+        return frame
+    new_w = max(1, int(w / scale))
+    new_h = max(1, int(h / scale))
+    return cv2.resize(frame, (new_w, new_h))
+
+
 def _safe_crop(frame: np.ndarray, box: Tuple[int, int, int, int]) -> np.ndarray:
     h, w = frame.shape[:2]
     x1, y1, x2, y2 = box
@@ -55,7 +67,9 @@ def preprocess_image(path: Path, detector: FaceDetector, out_dir: Path) -> List[
     frame = cv2.imread(str(path))
     if frame is None:
         return []
-    boxes = detector.detect(frame)
+    frame = _maybe_resize(frame)
+    skip_face = os.getenv("DF_SKIP_FACE_DETECT", "0").lower() in {"1", "true", "yes"}
+    boxes = [(0, 0, frame.shape[1], frame.shape[0])] if skip_face else detector.detect(frame)
     outputs = []
     if not boxes:
         boxes = [(0, 0, frame.shape[1], frame.shape[0])]
@@ -80,7 +94,9 @@ def preprocess_video(path: Path, detector: FaceDetector, out_dir: Path) -> List[
         if frame_idx % IMGVID.frame_stride != 0:
             frame_idx += 1
             continue
-        boxes = detector.detect(frame)
+        frame = _maybe_resize(frame)
+        skip_face = os.getenv("DF_SKIP_FACE_DETECT", "0").lower() in {"1", "true", "yes"}
+        boxes = [(0, 0, frame.shape[1], frame.shape[0])] if skip_face else detector.detect(frame)
         if not boxes:
             boxes = [(0, 0, frame.shape[1], frame.shape[0])]
         face = _safe_crop(frame, boxes[0])

@@ -113,3 +113,12 @@
 2026-03-14T16:03:11+05:30 feedback_saved id=2eae112573704086a2eac7fc01cda47c label=real rating=3
 2026-03-14T16:03:45+05:30 sample_saved id=b89948fc898e43d785aa9bdb96db8649 modality=image prediction=deepfake
 2026-03-14T16:05:36+05:30 sample_saved id=86a19d86cc8e439aad169ffff68e361c modality=image prediction=deepfake
+2026-03-14T17:27:23+05:30 sample_saved id=1424b66e57804594bf2ea7b37043a6e0 modality=image prediction=deepfake
+2026-03-14T17:40:22+05:30 sample_saved id=927e9909107f415aa3588b989bbd3439 modality=image prediction=uncertain
+2026-03-14T17:58:38+05:30 sample_saved id=10b9f3d9a0104f2596072b0c1b0065cd modality=image prediction=deepfake
+2026-03-14T18:03:21+05:30 sample_saved id=89ba750f4e814578b45b6093b03edcc6 modality=image prediction=deepfake
+2026-03-14T18:09:47+05:30 sample_saved id=2473c7b442024cb98c04b9adb50cb797 modality=image prediction=deepfake
+2026-03-14T18:12:28+05:30 sample_saved id=b7f04abf21bc447a9777b78609d83d66 modality=image prediction=deepfake
+2026-03-14T18:30:05+05:30 sample_saved id=b781e11a97ff45d5a5801556659a0a11 modality=image prediction=deepfake
+2026-03-14T18:30:10+05:30 sample_saved id=d35686d749de4dbbbb3f23bc239f5a34 modality=image prediction=deepfake
+2026-03-14T18:34:44+05:30 sample_saved id=8f957ffe0a8c4de1be3f684d381d9365 modality=image prediction=deepfake

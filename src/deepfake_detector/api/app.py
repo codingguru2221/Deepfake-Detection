@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 
 from deepfake_detector.data.auto_dataset_training import run_full_auto_training
 from deepfake_detector.data.runtime_learning import RuntimeLearningManager
+from deepfake_detector.integrations import bitmind
+from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
 from deepfake_detector.utils.timezone import IST, now_ist_iso
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -38,6 +40,19 @@ AUTO_FULL_MODEL_TRAIN_ENABLED = os.getenv("DF_AUTO_FULL_MODEL_TRAIN_ENABLED", "1
     "no",
 }
 MAX_RUNTIME_SAMPLE_MB = float(os.getenv("DF_RUNTIME_MAX_SAMPLE_MB", "50"))
+BITMIND_ENABLED = os.getenv("BITMIND_ENABLED", "0").lower() not in {"0", "false", "no"} and bitmind.is_enabled()
+BITMIND_VERIFY_ON_INFER = os.getenv("BITMIND_VERIFY_ON_INFER", "1").lower() not in {"0", "false", "no"}
+BITMIND_RICH = os.getenv("BITMIND_RICH", "0").lower() not in {"0", "false", "no"}
+
+# Conservative thresholds to reduce false positives.
+DF_IMAGE_FAKE_THRESHOLD = float(os.getenv("DF_IMAGE_FAKE_THRESHOLD", "0.6"))
+DF_IMAGE_REAL_THRESHOLD = float(os.getenv("DF_IMAGE_REAL_THRESHOLD", "0.4"))
+DF_VIDEO_FAKE_THRESHOLD = float(os.getenv("DF_VIDEO_FAKE_THRESHOLD", "0.6"))
+DF_VIDEO_REAL_THRESHOLD = float(os.getenv("DF_VIDEO_REAL_THRESHOLD", "0.4"))
+DF_AUDIO_FAKE_THRESHOLD = float(os.getenv("DF_AUDIO_FAKE_THRESHOLD", "0.6"))
+DF_AUDIO_REAL_THRESHOLD = float(os.getenv("DF_AUDIO_REAL_THRESHOLD", "0.4"))
+DF_MULTIMODAL_FAKE_THRESHOLD = float(os.getenv("DF_MULTIMODAL_FAKE_THRESHOLD", "0.6"))
+DF_MULTIMODAL_REAL_THRESHOLD = float(os.getenv("DF_MULTIMODAL_REAL_THRESHOLD", "0.4"))
 
 
 app = FastAPI(title="Deepfake Detection API", version="1.0.0")
@@ -361,8 +376,44 @@ def _app_shutdown() -> None:
 
 
 def _as_result(prob_fake: float, details: dict) -> dict:
-    prediction = "deepfake" if prob_fake > 0.5 else "real"
-    confidence = prob_fake if prediction == "deepfake" else 1.0 - prob_fake
+    modality = str(details.get("modality") or "").lower()
+    stored = load_thresholds()
+    if modality in stored:
+        real_th, fake_th = stored[modality]["real"], stored[modality]["fake"]
+        details["thresholds_source"] = "calibrated"
+    else:
+        thresholds = {
+            "image": (DF_IMAGE_REAL_THRESHOLD, DF_IMAGE_FAKE_THRESHOLD),
+            "video": (DF_VIDEO_REAL_THRESHOLD, DF_VIDEO_FAKE_THRESHOLD),
+            "audio": (DF_AUDIO_REAL_THRESHOLD, DF_AUDIO_FAKE_THRESHOLD),
+            "multimodal": (DF_MULTIMODAL_REAL_THRESHOLD, DF_MULTIMODAL_FAKE_THRESHOLD),
+        }
+        real_th, fake_th = thresholds.get(modality, (0.4, 0.6))
+        details["thresholds_source"] = "env"
+    if prob_fake >= fake_th:
+        prediction = "deepfake"
+        confidence = prob_fake
+    elif prob_fake <= real_th:
+        prediction = "real"
+        confidence = 1.0 - prob_fake
+    else:
+        prediction = "uncertain"
+        confidence = max(prob_fake, 1.0 - prob_fake)
+    details["thresholds"] = {"real": real_th, "fake": fake_th}
+
+    # Stronger safety: only call deepfake when BOTH local + BitMind agree.
+    bitmind_verdict = str(details.get("bitmind_verdict") or "").lower()
+    if bitmind_verdict in {"real", "deepfake"}:
+        if bitmind_verdict == "real":
+            prediction = "real"
+            confidence = 1.0 - prob_fake
+        elif prediction == "deepfake" and bitmind_verdict == "deepfake":
+            prediction = "deepfake"
+            confidence = prob_fake
+        else:
+            prediction = "uncertain"
+            confidence = max(prob_fake, 1.0 - prob_fake)
+        details["bitmind_disagree"] = bitmind_verdict != prediction
     return {
         "prediction": prediction,
         "prob_fake": float(prob_fake),
@@ -493,7 +544,22 @@ def infer_image(file: UploadFile = File(...)) -> dict:
     try:
         raw_prob = float(predict_image(tmp, IMAGE_MODEL_PATH))
         prob = _apply_calibration(raw_prob, "image")
-        result = _as_result(prob, {"modality": "image", "filename": file.filename, "raw_prob_fake": raw_prob})
+        details = {"modality": "image", "filename": file.filename, "raw_prob_fake": raw_prob}
+        if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
+            try:
+                bm = bitmind.detect_image_bytes(
+                    tmp.read_bytes(),
+                    source=file.filename,
+                    rich=BITMIND_RICH,
+                )
+                details["bitmind"] = bm
+                verdict = bitmind.extract_verdict(bm)
+                if verdict:
+                    details["bitmind_verdict"] = verdict["prediction"]
+                    details["bitmind_confidence"] = verdict.get("confidence")
+            except Exception as exc:
+                details["bitmind_error"] = str(exc)
+        result = _as_result(prob, details)
         if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
             sample = _runtime_trainer.save_inference_sample(
                 source_path=tmp,
@@ -519,7 +585,22 @@ def infer_video(file: UploadFile = File(...)) -> dict:
     try:
         raw_prob = float(predict_video(tmp, VIDEO_MODEL_PATH))
         prob = _apply_calibration(raw_prob, "video")
-        result = _as_result(prob, {"modality": "video", "filename": file.filename, "raw_prob_fake": raw_prob})
+        details = {"modality": "video", "filename": file.filename, "raw_prob_fake": raw_prob}
+        if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
+            try:
+                bm = bitmind.detect_video_file(
+                    tmp,
+                    source=file.filename,
+                    rich=BITMIND_RICH,
+                )
+                details["bitmind"] = bm
+                verdict = bitmind.extract_verdict(bm)
+                if verdict:
+                    details["bitmind_verdict"] = verdict["prediction"]
+                    details["bitmind_confidence"] = verdict.get("confidence")
+            except Exception as exc:
+                details["bitmind_error"] = str(exc)
+        result = _as_result(prob, details)
         if RUNTIME_LEARNING_ENABLED and tmp.exists() and (tmp.stat().st_size / (1024 * 1024)) <= MAX_RUNTIME_SAMPLE_MB:
             sample = _runtime_trainer.save_inference_sample(
                 source_path=tmp,
@@ -623,3 +704,19 @@ def infer_multimodal(file: UploadFile = File(...)) -> dict:
         raise HTTPException(status_code=500, detail=f"Multimodal inference failed: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
+
+
+@app.post("/calibration/run")
+def run_calibration(modality: str = "all") -> dict:
+    if modality not in {"all", "image", "video", "audio"}:
+        raise HTTPException(status_code=400, detail="modality must be one of: all, image, video, audio")
+    try:
+        result = run_threshold_calibration(modality)
+        return {"status": "ok", "result": result}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Calibration failed: {exc}") from exc
+
+
+@app.get("/calibration")
+def get_calibration() -> dict:
+    return {"thresholds": load_thresholds()}
