@@ -103,3 +103,13 @@
 2026-03-07T22:38:02+05:30 sample_saved id=0194d73bc8974c5fbadc14dfb4e4333d modality=image prediction=real
 2026-03-07T22:38:32+05:30 sample_saved id=889ff6c113ef46b5876d9b88182ab181 modality=image prediction=deepfake
 2026-03-07T22:38:54+05:30 sample_saved id=47f114f969734abeaa6bb1853161062e modality=image prediction=deepfake
+2026-03-14T10:46:04+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-14T10:46:04+05:30 training_done status=skipped reason=insufficient_labeled_data user_labeled=0 pseudo=3 crawler_refs=100
+2026-03-14T10:47:32+05:30 sample_saved id=fe914dc3a0ae43389cb253dbd33e97da modality=image prediction=deepfake
+2026-03-14T10:48:11+05:30 sample_saved id=00af335c721f4b0ab83f325edfc49fcb modality=image prediction=deepfake
+2026-03-14T10:49:10+05:30 calibrator_skipped reason=insufficient_labeled_data
+2026-03-14T10:49:10+05:30 training_done status=skipped reason=insufficient_labeled_data user_labeled=0 pseudo=5 crawler_refs=0
+2026-03-14T16:03:02+05:30 sample_saved id=2eae112573704086a2eac7fc01cda47c modality=image prediction=deepfake
+2026-03-14T16:03:11+05:30 feedback_saved id=2eae112573704086a2eac7fc01cda47c label=real rating=3
+2026-03-14T16:03:45+05:30 sample_saved id=b89948fc898e43d785aa9bdb96db8649 modality=image prediction=deepfake
+2026-03-14T16:05:36+05:30 sample_saved id=86a19d86cc8e439aad169ffff68e361c modality=image prediction=deepfake

@@ -5,9 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f72ffef2-0574-4849-9ec9-0acd850fbb21" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/sample.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/sample.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/external/crawler.log" beforeDir="false" afterPath="$PROJECT_DIR$/data/external/crawler.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/external/dataset_catalog.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/external/dataset_catalog.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/runtime/model_metrics.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/runtime/model_metrics.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/runtime/runtime_learning.log" beforeDir="false" afterPath="$PROJECT_DIR$/data/runtime/runtime_learning.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/runtime/runtime_training_manifest.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/runtime/runtime_training_manifest.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/runtime/training_jobs.jsonl" beforeDir="false" afterPath="$PROJECT_DIR$/data/runtime/training_jobs.jsonl" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/runtime/user_samples.jsonl" beforeDir="false" afterPath="$PROJECT_DIR$/data/runtime/user_samples.jsonl" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -21,33 +25,33 @@
     <commands />
     <urls />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 8
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8
+}</component>
   <component name="ProjectId" id="3AYWlV6JQC2gHsW7QjyE9uet4LR" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "main",
-    "junie.onboarding.icon.badge.shown": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -64,6 +68,7 @@
       <option name="presentableId" value="Default" />
       <updated>1772770135934</updated>
       <workItem from="1772770136963" duration="1823000" />
+      <workItem from="1773468137818" duration="427000" />
     </task>
     <servers />
   </component>

@@ -10,8 +10,6 @@ import torch
 from sklearn.metrics import classification_report, roc_auc_score
 from sklearn.model_selection import train_test_split
 
-from deepfake_detector.features.audio_features import batch_extract as audio_batch_extract
-from deepfake_detector.features.image_features import ImageFeatureExtractor, batch_extract as image_batch_extract
 from deepfake_detector.models.audio_model import build_audio_model, save_audio_model
 from deepfake_detector.models.image_model_tf import build_image_model
 from deepfake_detector.models.video_model_torch import VideoGRUClassifier, save_torch_checkpoint
@@ -34,14 +32,21 @@ def _load_images_from_manifest(samples_json: Path) -> Tuple[np.ndarray, np.ndarr
     return X_arr, y_arr
 
 
-def train_image_tf(samples_json: Path, out_model: Path, epochs: int) -> None:
+def train_image_tf(samples_json: Path, out_model: Path, epochs: int, batch_size: int) -> None:
     import tensorflow as tf
 
     X, y = _load_images_from_manifest(samples_json)
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     model = build_image_model()
     callbacks = [tf.keras.callbacks.EarlyStopping(monitor="val_auc", patience=2, mode="max", restore_best_weights=True)]
-    model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=epochs, batch_size=16, callbacks=callbacks)
+    model.fit(
+        X_train,
+        y_train,
+        validation_data=(X_val, y_val),
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=callbacks,
+    )
     preds = model.predict(X_val).ravel()
     auc = roc_auc_score(y_val, preds) if len(np.unique(y_val)) > 1 else float("nan")
     print(f"[image] val_auc={auc:.4f}")
@@ -61,6 +66,8 @@ def _group_video_frames(rows: List[Dict[str, str | int]]) -> Dict[str, Dict[str,
 
 
 def train_video_torch(samples_json: Path, out_ckpt: Path, epochs: int) -> None:
+    from deepfake_detector.features.image_features import ImageFeatureExtractor
+
     rows = read_json(samples_json)["samples"]
     groups = _group_video_frames(rows)
     extractor = ImageFeatureExtractor()
@@ -123,6 +130,8 @@ def train_video_torch(samples_json: Path, out_ckpt: Path, epochs: int) -> None:
 
 
 def train_audio(samples_json: Path, out_model: Path) -> None:
+    from deepfake_detector.features.audio_features import batch_extract as audio_batch_extract
+
     rows = read_json(samples_json)["samples"]
     paths = [Path(r["path"]) for r in rows]
     y = np.asarray([int(r["label"]) for r in rows], dtype=np.int32)
@@ -139,6 +148,8 @@ def train_audio(samples_json: Path, out_model: Path) -> None:
 
 
 def train_image_features_baseline(samples_json: Path, out_npz: Path) -> None:
+    from deepfake_detector.features.image_features import batch_extract as image_batch_extract
+
     rows = read_json(samples_json)["samples"]
     paths = [Path(r["path"]) for r in rows]
     y = np.asarray([int(r["label"]) for r in rows], dtype=np.int32)
@@ -154,11 +165,12 @@ def main() -> None:
     parser.add_argument("--samples-json", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--batch-size", type=int, default=16)
     args = parser.parse_args()
 
     set_seed(42)
     if args.modality == "image":
-        train_image_tf(args.samples_json, args.out, args.epochs)
+        train_image_tf(args.samples_json, args.out, args.epochs, args.batch_size)
     elif args.modality == "video":
         train_video_torch(args.samples_json, args.out, args.epochs)
     elif args.modality == "audio":
