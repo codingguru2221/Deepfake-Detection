@@ -18,10 +18,20 @@ from deepfake_detector.data.runtime_learning import RuntimeLearningManager
 from deepfake_detector.integrations import aws_rekognition
 from deepfake_detector.integrations import hf_deepfake
 from deepfake_detector.integrations import bitmind
-from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
 from deepfake_detector.utils.timezone import IST, now_ist_iso
 
 logger = logging.getLogger(__name__)
+
+try:
+    from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
+except ModuleNotFoundError:
+    logger.warning("Calibration module unavailable; using environment thresholds only.")
+
+    def load_thresholds() -> dict:
+        return {}
+
+    def run_threshold_calibration(_modality: str = "all") -> dict:
+        raise RuntimeError("Calibration module is unavailable in this deployment.")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_MODEL_PATH = Path(os.getenv("DF_IMAGE_MODEL", PROJECT_ROOT / "models" / "exports" / "image_tf_model.keras"))
