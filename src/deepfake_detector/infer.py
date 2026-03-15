@@ -7,12 +7,6 @@ from typing import Optional
 
 import cv2
 import numpy as np
-import torch
-
-from deepfake_detector.features.audio_features import AudioFeatureExtractor
-from deepfake_detector.features.image_features import ImageFeatureExtractor
-from deepfake_detector.models.audio_model import load_audio_model
-from deepfake_detector.models.video_model_torch import VideoGRUClassifier, load_torch_checkpoint
 from deepfake_detector.data.calibration import load_thresholds
 
 
@@ -30,6 +24,11 @@ def predict_image(image_path: Path, model_path: Path) -> float:
 
 
 def predict_video(video_path: Path, model_path: Path) -> float:
+    import torch
+
+    from deepfake_detector.features.image_features import ImageFeatureExtractor
+    from deepfake_detector.models.video_model_torch import VideoGRUClassifier, load_torch_checkpoint
+
     extractor = ImageFeatureExtractor()
     cap = cv2.VideoCapture(str(video_path))
     seq = []
@@ -56,6 +55,9 @@ def predict_video(video_path: Path, model_path: Path) -> float:
 
 
 def predict_audio(audio_path: Path, model_path: Path) -> float:
+    from deepfake_detector.features.audio_features import AudioFeatureExtractor
+    from deepfake_detector.models.audio_model import load_audio_model
+
     extractor = AudioFeatureExtractor()
     feats = extractor.extract(audio_path).reshape(1, -1)
     model = load_audio_model(model_path)

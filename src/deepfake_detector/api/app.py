@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import tempfile
@@ -19,6 +20,8 @@ from deepfake_detector.integrations import hf_deepfake
 from deepfake_detector.integrations import bitmind
 from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
 from deepfake_detector.utils.timezone import IST, now_ist_iso
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 IMAGE_MODEL_PATH = Path(os.getenv("DF_IMAGE_MODEL", PROJECT_ROOT / "models" / "exports" / "image_tf_model.keras"))
@@ -631,6 +634,7 @@ def infer_image(file: UploadFile = File(...)) -> dict:
         _attach_runtime_sample_if_possible(result, tmp, "image")
         return result
     except Exception as exc:
+        logger.exception("Image inference failed for file=%s", file.filename)
         raise HTTPException(status_code=500, detail=f"Image inference failed: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
@@ -686,6 +690,7 @@ def infer_video(file: UploadFile = File(...)) -> dict:
         _attach_runtime_sample_if_possible(result, tmp, "video")
         return result
     except Exception as exc:
+        logger.exception("Video inference failed for file=%s", file.filename)
         raise HTTPException(status_code=500, detail=f"Video inference failed: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
@@ -714,6 +719,7 @@ def infer_audio(file: UploadFile = File(...)) -> dict:
         _attach_runtime_sample_if_possible(result, tmp, "audio")
         return result
     except Exception as exc:
+        logger.exception("Audio inference failed for file=%s", file.filename)
         raise HTTPException(status_code=500, detail=f"Audio inference failed: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
@@ -780,6 +786,7 @@ def infer_multimodal(file: UploadFile = File(...)) -> dict:
     except HTTPException:
         raise
     except Exception as exc:
+        logger.exception("Multimodal inference failed for file=%s", file.filename)
         raise HTTPException(status_code=500, detail=f"Multimodal inference failed: {exc}") from exc
     finally:
         tmp.unlink(missing_ok=True)
