@@ -490,6 +490,66 @@ def _attach_runtime_sample_if_possible(result: dict, tmp: Path, modality: str) -
         result.setdefault("details", {})["runtime_sample_error"] = str(exc)
 
 
+def _run_image_inference(tmp: Path) -> tuple[float, dict | None, dict | None, str]:
+    _, _, predict_image, _ = _infer_funcs()
+    errors: list[str] = []
+
+    if IMAGE_MODEL_PATH.exists():
+        try:
+            return float(predict_image(tmp, IMAGE_MODEL_PATH)), None, None, "local"
+        except Exception as exc:
+            logger.warning("Local image model failed, trying fallback providers: %s", exc)
+            errors.append(f"local={exc}")
+
+    if HF_DEEPFAKE_ENABLED:
+        try:
+            hf_result = hf_deepfake.detect_image_file(tmp)
+            return float(hf_result["prob_fake"]), hf_result, None, "huggingface"
+        except Exception as exc:
+            errors.append(f"huggingface={exc}")
+
+    if AWS_REKOGNITION_ENABLED:
+        try:
+            aws_result = aws_rekognition.detect_image_bytes(tmp.read_bytes())
+            return float(aws_result["prob_fake"]), None, aws_result, "aws_rekognition"
+        except Exception as exc:
+            errors.append(f"aws_rekognition={exc}")
+
+    if errors:
+        raise RuntimeError("; ".join(errors))
+    raise RuntimeError(f"Image model not found: {IMAGE_MODEL_PATH}")
+
+
+def _run_video_inference(tmp: Path) -> tuple[float, dict | None, dict | None, str]:
+    _, _, _, predict_video = _infer_funcs()
+    errors: list[str] = []
+
+    if VIDEO_MODEL_PATH.exists():
+        try:
+            return float(predict_video(tmp, VIDEO_MODEL_PATH)), None, None, "local"
+        except Exception as exc:
+            logger.warning("Local video model failed, trying fallback providers: %s", exc)
+            errors.append(f"local={exc}")
+
+    if HF_DEEPFAKE_ENABLED:
+        try:
+            hf_result = hf_deepfake.detect_video_file(tmp)
+            return float(hf_result["prob_fake"]), hf_result, None, "huggingface"
+        except Exception as exc:
+            errors.append(f"huggingface={exc}")
+
+    if AWS_REKOGNITION_ENABLED:
+        try:
+            aws_result = aws_rekognition.detect_video_file(tmp)
+            return float(aws_result["prob_fake"]), None, aws_result, "aws_rekognition"
+        except Exception as exc:
+            errors.append(f"aws_rekognition={exc}")
+
+    if errors:
+        raise RuntimeError("; ".join(errors))
+    raise RuntimeError(f"Video model not found: {VIDEO_MODEL_PATH}")
+
+
 @app.get("/health")
 def health() -> dict:
     availability = {
@@ -596,28 +656,17 @@ def runtime_train(payload: RuntimeTrainRequest) -> dict:
 
 @app.post("/infer/image")
 def infer_image(file: UploadFile = File(...)) -> dict:
-    _, _, predict_image, _ = _infer_funcs()
     if not HF_DEEPFAKE_ENABLED and not AWS_REKOGNITION_ENABLED and not IMAGE_MODEL_PATH.exists():
         raise HTTPException(status_code=503, detail=f"Image model not found: {IMAGE_MODEL_PATH}")
     tmp = _save_upload(file)
     try:
-        if HF_DEEPFAKE_ENABLED:
-            hf_result = hf_deepfake.detect_image_file(tmp)
-            aws_result = None
-            raw_prob = float(hf_result["prob_fake"])
-        elif AWS_REKOGNITION_ENABLED:
-            hf_result = None
-            aws_result = aws_rekognition.detect_image_bytes(tmp.read_bytes())
-            raw_prob = float(aws_result["prob_fake"])
-        else:
-            hf_result = None
-            aws_result = None
-            raw_prob = float(predict_image(tmp, IMAGE_MODEL_PATH))
+        raw_prob, hf_result, aws_result, backend = _run_image_inference(tmp)
         prob, inverted = _maybe_invert_prob(raw_prob, "image")
         prob = _apply_calibration(prob, "image")
         details = {
             "modality": "image",
             "filename": file.filename,
+            "backend": backend,
             "raw_prob_fake": prob,
             "raw_prob_fake_raw": raw_prob,
             "prob_inverted": inverted,
@@ -652,28 +701,17 @@ def infer_image(file: UploadFile = File(...)) -> dict:
 
 @app.post("/infer/video")
 def infer_video(file: UploadFile = File(...)) -> dict:
-    _, _, _, predict_video = _infer_funcs()
     if not HF_DEEPFAKE_ENABLED and not AWS_REKOGNITION_ENABLED and not VIDEO_MODEL_PATH.exists():
         raise HTTPException(status_code=503, detail=f"Video model not found: {VIDEO_MODEL_PATH}")
     tmp = _save_upload(file)
     try:
-        if HF_DEEPFAKE_ENABLED:
-            hf_result = hf_deepfake.detect_video_file(tmp)
-            aws_result = None
-            raw_prob = float(hf_result["prob_fake"])
-        elif AWS_REKOGNITION_ENABLED:
-            hf_result = None
-            aws_result = aws_rekognition.detect_video_file(tmp)
-            raw_prob = float(aws_result["prob_fake"])
-        else:
-            hf_result = None
-            aws_result = None
-            raw_prob = float(predict_video(tmp, VIDEO_MODEL_PATH))
+        raw_prob, hf_result, aws_result, backend = _run_video_inference(tmp)
         prob, inverted = _maybe_invert_prob(raw_prob, "video")
         prob = _apply_calibration(prob, "video")
         details = {
             "modality": "video",
             "filename": file.filename,
+            "backend": backend,
             "raw_prob_fake": prob,
             "raw_prob_fake_raw": raw_prob,
             "prob_inverted": inverted,

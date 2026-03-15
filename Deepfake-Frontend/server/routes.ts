@@ -49,6 +49,37 @@ function getRequestBody(req: Request): { body?: BodyInit; isStream: boolean } {
   return { body: undefined, isStream: false };
 }
 
+async function proxyToBackend(req: Request, res: any, next: (error?: unknown) => void, backendPath: string) {
+  const query = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+  const backendUrl = new URL(`${backendPath}${query}`, `${getBackendBaseUrl()}/`);
+  const headers = getForwardHeaders(req);
+  const { body, isStream } = getRequestBody(req);
+
+  try {
+    const requestInit: RequestInit & { duplex?: "half" } = {
+      method: req.method,
+      headers,
+      body,
+    };
+    if (isStream) {
+      requestInit.duplex = "half";
+    }
+
+    const response = await fetch(backendUrl, requestInit);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (["content-encoding", "transfer-encoding", "connection"].includes(key.toLowerCase())) return;
+      res.setHeader(key, value);
+    });
+
+    const arrayBuffer = await response.arrayBuffer();
+    res.send(Buffer.from(arrayBuffer));
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -60,33 +91,35 @@ export async function registerRoutes(
   // e.g. storage.insertUser(user) or storage.getUserByUsername(username)
 
   app.all("/api/*path", async (req, res, next) => {
-    const backendUrl = new URL(`/${req.params.path.join("/")}${req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : ""}`, `${getBackendBaseUrl()}/`);
-    const headers = getForwardHeaders(req);
-    const { body, isStream } = getRequestBody(req);
+    await proxyToBackend(req, res, next, `/${req.params.path.join("/")}`);
+  });
 
-    try {
-      const requestInit: RequestInit & { duplex?: "half" } = {
-        method: req.method,
-        headers,
-        body,
-      };
-      if (isStream) {
-        requestInit.duplex = "half";
-      }
+  app.all("/health", async (req, res, next) => {
+    await proxyToBackend(req, res, next, "/health");
+  });
 
-      const response = await fetch(backendUrl, requestInit);
+  app.all("/infer/*path", async (req, res, next) => {
+    await proxyToBackend(req, res, next, `/infer/${req.params.path.join("/")}`);
+  });
 
-      res.status(response.status);
-      response.headers.forEach((value, key) => {
-        if (["content-encoding", "transfer-encoding", "connection"].includes(key.toLowerCase())) return;
-        res.setHeader(key, value);
-      });
+  app.all("/crawler/*path", async (req, res, next) => {
+    await proxyToBackend(req, res, next, `/crawler/${req.params.path.join("/")}`);
+  });
 
-      const arrayBuffer = await response.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
-    } catch (error) {
-      next(error);
-    }
+  app.all("/train/*path", async (req, res, next) => {
+    await proxyToBackend(req, res, next, `/train/${req.params.path.join("/")}`);
+  });
+
+  app.all("/feedback/*path", async (req, res, next) => {
+    await proxyToBackend(req, res, next, `/feedback/${req.params.path.join("/")}`);
+  });
+
+  app.all("/calibration", async (req, res, next) => {
+    await proxyToBackend(req, res, next, "/calibration");
+  });
+
+  app.all("/calibration/*path", async (req, res, next) => {
+    await proxyToBackend(req, res, next, `/calibration/${req.params.path.join("/")}`);
   });
 
   return httpServer;

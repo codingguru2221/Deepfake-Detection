@@ -27,16 +27,12 @@ def _tokenize_path(path: Path) -> list[str]:
 
 
 def _label_from_path(path: Path) -> int:
-    tokens = _tokenize_path(path)
-    last_real = max((i for i, t in enumerate(tokens) if t in _REAL_TOKENS), default=-1)
-    last_fake = max((i for i, t in enumerate(tokens) if t in _FAKE_TOKENS), default=-1)
-    if last_real == -1 and last_fake == -1:
-        return 0
-    if last_fake > last_real:
+    p = str(path).lower()
+    if "fake" in p or "deepfake" in p or "manipulated" in p:
         return 1
+    if "real" in p or "original" in p:
+        return 0
     return 0
-
-
 def _scan_files(root: Path, extensions: set[str]) -> List[Path]:
     return [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in extensions]
 
