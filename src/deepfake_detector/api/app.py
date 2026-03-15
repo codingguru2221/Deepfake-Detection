@@ -16,11 +16,22 @@ from pydantic import BaseModel, Field
 from deepfake_detector.data.auto_dataset_training import run_full_auto_training
 from deepfake_detector.data.runtime_learning import RuntimeLearningManager
 from deepfake_detector.integrations import aws_rekognition
+from deepfake_detector.integrations import gemini_vision
 from deepfake_detector.integrations import hf_deepfake
 from deepfake_detector.integrations import bitmind
+from deepfake_detector.integrations import openai_vision
+from deepfake_detector.secrets_loader import apply_secret_env
 from deepfake_detector.utils.timezone import IST, now_ist_iso
 
 logger = logging.getLogger(__name__)
+
+AWS_SECRET_NAME = os.getenv("AWS_SECRET_NAME")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+if AWS_SECRET_NAME:
+    try:
+        apply_secret_env(AWS_SECRET_NAME, AWS_REGION)
+    except Exception as exc:
+        logger.warning("Failed to load AWS secret %s: %s", AWS_SECRET_NAME, exc)
 
 try:
     from deepfake_detector.data.calibration import run_threshold_calibration, load_thresholds
@@ -60,6 +71,8 @@ BITMIND_VERIFY_ON_INFER = os.getenv("BITMIND_VERIFY_ON_INFER", "1").lower() not 
 BITMIND_RICH = os.getenv("BITMIND_RICH", "0").lower() not in {"0", "false", "no"}
 AWS_REKOGNITION_ENABLED = os.getenv("AWS_REKOGNITION_ENABLED", "0").lower() not in {"0", "false", "no"} and aws_rekognition.is_enabled()
 HF_DEEPFAKE_ENABLED = hf_deepfake.is_enabled()
+OPENAI_VISION_ENABLED = os.getenv("OPENAI_VISION_ENABLED", "1").lower() not in {"0", "false", "no"} and openai_vision.is_enabled()
+GEMINI_VISION_ENABLED = os.getenv("GEMINI_VISION_ENABLED", "1").lower() not in {"0", "false", "no"} and gemini_vision.is_enabled()
 
 # Conservative thresholds to reduce false positives.
 DF_IMAGE_FAKE_THRESHOLD = float(os.getenv("DF_IMAGE_FAKE_THRESHOLD", "0.6"))
@@ -192,6 +205,84 @@ def _maybe_invert_prob(prob_fake: float, modality: str) -> tuple[float, bool]:
     if invert:
         return 1.0 - prob_fake, True
     return prob_fake, False
+
+
+def _source_prob_fake(source: dict | None) -> float | None:
+    if not source:
+        return None
+    value = source.get("prob_fake")
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    prediction = str(source.get("prediction") or "").lower()
+    confidence = source.get("confidence")
+    conf = float(confidence) if isinstance(confidence, (int, float)) else 0.5
+    if prediction == "deepfake":
+        return max(0.0, min(1.0, conf))
+    if prediction == "real":
+        return max(0.0, min(1.0, 1.0 - conf))
+    return None
+
+
+def _pair_average(*values: float | None) -> float | None:
+    usable = [float(v) for v in values if isinstance(v, (int, float))]
+    if not usable:
+        return None
+    return sum(usable) / len(usable)
+
+
+def _find_source(details: dict, provider: str) -> dict | None:
+    for source in details.get("sources", []) or []:
+        if str(source.get("provider") or "").lower() == provider:
+            return source
+    return None
+
+
+def _bitmind_prob_fake(details: dict) -> float | None:
+    verdict = str(details.get("bitmind_verdict") or "").lower()
+    confidence = details.get("bitmind_confidence")
+    conf = float(confidence) if isinstance(confidence, (int, float)) else 0.5
+    if verdict == "deepfake":
+        return max(0.0, min(1.0, conf))
+    if verdict == "real":
+        return max(0.0, min(1.0, 1.0 - conf))
+    return None
+
+
+def _blend_image_video_probability(prob_fake: float, details: dict) -> float:
+    modality = str(details.get("modality") or "").lower()
+    if modality not in {"image", "video"}:
+        return prob_fake
+
+    local_prob = _source_prob_fake(_find_source(details, "local"))
+    openai_prob = _source_prob_fake(_find_source(details, "openai"))
+    gemini_prob = _source_prob_fake(_find_source(details, "gemini"))
+    bitmind_prob = _bitmind_prob_fake(details)
+
+    pair_local_openai = _pair_average(local_prob, openai_prob)
+    pair_gemini_bitmind = _pair_average(gemini_prob, bitmind_prob)
+
+    weights: list[tuple[float, float]] = [(float(prob_fake), 0.20)]
+    if pair_local_openai is not None:
+        weights.append((pair_local_openai, 0.50))
+    if pair_gemini_bitmind is not None:
+        weights.append((pair_gemini_bitmind, 0.30))
+
+    adjusted = sum(value * weight for value, weight in weights) / sum(weight for _, weight in weights)
+
+    bitmind_verdict = str(details.get("bitmind_verdict") or "").lower()
+    if bitmind_verdict == "deepfake" and pair_gemini_bitmind is not None and pair_gemini_bitmind >= 0.75:
+        adjusted = max(adjusted, pair_gemini_bitmind, 0.68)
+        details["bitmind_priority_applied"] = True
+    elif bitmind_verdict == "real" and pair_gemini_bitmind is not None and pair_gemini_bitmind <= 0.25:
+        adjusted = min(adjusted, pair_gemini_bitmind, 0.32)
+
+    details["fusion"] = {
+        "base_prob_fake": float(prob_fake),
+        "local_openai_prob_fake": pair_local_openai,
+        "gemini_bitmind_prob_fake": pair_gemini_bitmind,
+        "final_blended_prob_fake": float(adjusted),
+    }
+    return max(0.0, min(1.0, adjusted))
 
 
 def _start_dataset_crawler(force: bool = False) -> bool:
@@ -409,6 +500,7 @@ def _app_shutdown() -> None:
 
 def _as_result(prob_fake: float, details: dict) -> dict:
     modality = str(details.get("modality") or "").lower()
+    prob_fake = _blend_image_video_probability(prob_fake, details)
     stored = load_thresholds()
     if modality in stored:
         real_th, fake_th = stored[modality]["real"], stored[modality]["fake"]
@@ -433,19 +525,19 @@ def _as_result(prob_fake: float, details: dict) -> dict:
         confidence = max(prob_fake, 1.0 - prob_fake)
     details["thresholds"] = {"real": real_th, "fake": fake_th}
 
-    # Stronger safety: only call deepfake when BOTH local + BitMind agree.
     bitmind_verdict = str(details.get("bitmind_verdict") or "").lower()
+    original_prediction = prediction
     if bitmind_verdict in {"real", "deepfake"}:
         if bitmind_verdict == "real":
             prediction = "real"
-            confidence = 1.0 - prob_fake
+            confidence = max(float(details.get("bitmind_confidence") or 0.0), 1.0 - prob_fake)
         elif prediction == "deepfake" and bitmind_verdict == "deepfake":
             prediction = "deepfake"
-            confidence = prob_fake
+            confidence = max(float(details.get("bitmind_confidence") or 0.0), prob_fake)
         else:
             prediction = "uncertain"
             confidence = max(prob_fake, 1.0 - prob_fake)
-        details["bitmind_disagree"] = bitmind_verdict != prediction
+        details["bitmind_disagree"] = bitmind_verdict != original_prediction
     return {
         "prediction": prediction,
         "prob_fake": float(prob_fake),
@@ -490,13 +582,89 @@ def _attach_runtime_sample_if_possible(result: dict, tmp: Path, modality: str) -
         result.setdefault("details", {})["runtime_sample_error"] = str(exc)
 
 
-def _run_image_inference(tmp: Path) -> tuple[float, dict | None, dict | None, str]:
+def _provider_weight(name: str) -> float:
+    weights = {
+        "local": float(os.getenv("DF_WEIGHT_LOCAL", "0.25")),
+        "huggingface": float(os.getenv("DF_WEIGHT_HUGGINGFACE", "0.2")),
+        "aws_rekognition": float(os.getenv("DF_WEIGHT_AWS_REKOGNITION", "0.2")),
+        "openai": float(os.getenv("DF_WEIGHT_OPENAI", "0.3")),
+        "gemini": float(os.getenv("DF_WEIGHT_GEMINI", "0.3")),
+    }
+    return max(0.0, weights.get(name, 0.0))
+
+
+def _classify_provider_error(message: str) -> str:
+    text = message.lower()
+    if "429" in text or "too many requests" in text or "rate limit" in text or "quota" in text:
+        return "rate_limited"
+    if "400" in text or "bad request" in text:
+        return "bad_request"
+    if "getaddrinfo" in text or "name or service not known" in text or "forbidden by its access permissions" in text:
+        return "network"
+    return "other"
+
+
+def _summarize_provider_error(provider: str, message: str) -> str:
+    error_type = _classify_provider_error(message)
+    labels = {
+        "rate_limited": "temporarily rate limited",
+        "bad_request": "request rejected",
+        "network": "network unavailable",
+        "other": "temporarily unavailable",
+    }
+    return f"{provider}={labels.get(error_type, 'temporarily unavailable')}"
+
+
+def _ensemble_image_sources(sources: list[dict]) -> tuple[float, list[dict]]:
+    usable = [src for src in sources if isinstance(src.get("prob_fake"), (int, float))]
+    if not usable:
+        raise RuntimeError("No usable image inference sources were available.")
+
+    total_weight = 0.0
+    weighted_sum = 0.0
+    normalized_sources: list[dict] = []
+    for src in usable:
+        name = str(src.get("provider") or "unknown")
+        weight = _provider_weight(name)
+        prob_fake = float(src["prob_fake"])
+        weighted_sum += prob_fake * weight
+        total_weight += weight
+        normalized_sources.append(
+            {
+                "provider": name,
+                "prob_fake": prob_fake,
+                "confidence": src.get("confidence"),
+                "prediction": src.get("prediction"),
+                "weight": weight,
+                "model": src.get("model"),
+                "backend": src.get("backend"),
+                "available": True,
+            }
+        )
+
+    if total_weight <= 0:
+        avg = sum(float(src["prob_fake"]) for src in usable) / len(usable)
+        return avg, normalized_sources
+    return weighted_sum / total_weight, normalized_sources
+
+
+def _run_image_inference(tmp: Path, filename: str | None = None) -> tuple[float, dict]:
     _, _, predict_image, _ = _infer_funcs()
     errors: list[str] = []
+    sources: list[dict] = []
 
     if IMAGE_MODEL_PATH.exists():
         try:
-            return float(predict_image(tmp, IMAGE_MODEL_PATH)), None, None, "local"
+            sources.append(
+                {
+                    "provider": "local",
+                    "backend": "local",
+                    "model": str(IMAGE_MODEL_PATH),
+                    "prob_fake": float(predict_image(tmp, IMAGE_MODEL_PATH)),
+                    "prediction": None,
+                    "confidence": None,
+                }
+            )
         except Exception as exc:
             logger.warning("Local image model failed, trying fallback providers: %s", exc)
             errors.append(f"local={exc}")
@@ -504,17 +672,74 @@ def _run_image_inference(tmp: Path) -> tuple[float, dict | None, dict | None, st
     if HF_DEEPFAKE_ENABLED:
         try:
             hf_result = hf_deepfake.detect_image_file(tmp)
-            return float(hf_result["prob_fake"]), hf_result, None, "huggingface"
+            hf_result["provider"] = "huggingface"
+            hf_result["backend"] = "huggingface"
+            sources.append(hf_result)
         except Exception as exc:
             errors.append(f"huggingface={exc}")
 
     if AWS_REKOGNITION_ENABLED:
         try:
             aws_result = aws_rekognition.detect_image_bytes(tmp.read_bytes())
-            return float(aws_result["prob_fake"]), None, aws_result, "aws_rekognition"
+            aws_result["provider"] = "aws_rekognition"
+            aws_result["backend"] = "aws_rekognition"
+            sources.append(aws_result)
         except Exception as exc:
             errors.append(f"aws_rekognition={exc}")
 
+    image_bytes = tmp.read_bytes()
+    suffix = tmp.suffix.lower()
+    mime_type = {
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+    }.get(suffix, "image/jpeg")
+
+    if OPENAI_VISION_ENABLED:
+        try:
+            openai_result = openai_vision.detect_image_bytes(image_bytes, filename=filename, mime_type=mime_type)
+            sources.append(openai_result)
+        except Exception as exc:
+            errors.append(_summarize_provider_error("openai", str(exc)))
+            sources.append(
+                {
+                    "provider": "openai",
+                    "prediction": "unavailable",
+                    "prob_fake": None,
+                    "confidence": None,
+                    "model": os.getenv("OPENAI_VISION_MODEL", "gpt-4.1-mini"),
+                    "backend": "openai",
+                    "available": False,
+                    "error": str(exc),
+                    "error_type": _classify_provider_error(str(exc)),
+                }
+            )
+
+    if GEMINI_VISION_ENABLED:
+        try:
+            gemini_result = gemini_vision.detect_image_bytes(image_bytes, filename=filename, mime_type=mime_type)
+            sources.append(gemini_result)
+        except Exception as exc:
+            errors.append(_summarize_provider_error("gemini", str(exc)))
+            sources.append(
+                {
+                    "provider": "gemini",
+                    "prediction": "unavailable",
+                    "prob_fake": None,
+                    "confidence": None,
+                    "model": os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash"),
+                    "backend": "gemini",
+                    "available": False,
+                    "error": str(exc),
+                    "error_type": _classify_provider_error(str(exc)),
+                }
+            )
+
+    if sources:
+        prob_fake, ensemble_sources = _ensemble_image_sources([src for src in sources if src.get("available", True)])
+        unavailable = [src for src in sources if not src.get("available", True)]
+        ensemble_sources.extend(unavailable)
+        return prob_fake, {"sources": ensemble_sources, "errors": errors}
     if errors:
         raise RuntimeError("; ".join(errors))
     raise RuntimeError(f"Image model not found: {IMAGE_MODEL_PATH}")
@@ -579,6 +804,20 @@ def health() -> dict:
         "hfDeepfake": {
             "enabled": HF_DEEPFAKE_ENABLED,
             "modelId": os.getenv("HF_DEEPFAKE_MODEL_ID", "prithivMLmods/deepfake-detector-model-v1"),
+        },
+        "bitmind": {
+            "enabled": BITMIND_ENABLED,
+            "verifyOnInfer": BITMIND_VERIFY_ON_INFER,
+            "rich": BITMIND_RICH,
+            "oracleId": os.getenv("BITMIND_ORACLE_ID", "34"),
+        },
+        "openaiVision": {
+            "enabled": OPENAI_VISION_ENABLED,
+            "model": os.getenv("OPENAI_VISION_MODEL", "gpt-4.1-mini"),
+        },
+        "geminiVision": {
+            "enabled": GEMINI_VISION_ENABLED,
+            "model": os.getenv("GEMINI_VISION_MODEL", "gemini-2.0-flash"),
         },
     }
 
@@ -657,28 +896,31 @@ def runtime_train(payload: RuntimeTrainRequest) -> dict:
 @app.post("/infer/image")
 def infer_image(file: UploadFile = File(...)) -> dict:
     if not HF_DEEPFAKE_ENABLED and not AWS_REKOGNITION_ENABLED and not IMAGE_MODEL_PATH.exists():
-        raise HTTPException(status_code=503, detail=f"Image model not found: {IMAGE_MODEL_PATH}")
+        if not OPENAI_VISION_ENABLED and not GEMINI_VISION_ENABLED:
+            raise HTTPException(status_code=503, detail=f"Image model not found: {IMAGE_MODEL_PATH}")
     tmp = _save_upload(file)
     try:
-        raw_prob, hf_result, aws_result, backend = _run_image_inference(tmp)
+        raw_prob, provider_meta = _run_image_inference(tmp, filename=file.filename)
         prob, inverted = _maybe_invert_prob(raw_prob, "image")
         prob = _apply_calibration(prob, "image")
         details = {
             "modality": "image",
             "filename": file.filename,
-            "backend": backend,
+            "backend": "ensemble",
             "raw_prob_fake": prob,
             "raw_prob_fake_raw": raw_prob,
             "prob_inverted": inverted,
         }
-        if hf_result:
-            details["hf_deepfake"] = hf_result
-        if aws_result:
-            details["aws_rekognition"] = aws_result
+        if provider_meta.get("sources"):
+            details["sources"] = provider_meta["sources"]
+        if provider_meta.get("errors"):
+            details["provider_errors"] = provider_meta["errors"]
         if BITMIND_ENABLED and BITMIND_VERIFY_ON_INFER and tmp.exists():
             try:
                 bm = bitmind.detect_image_bytes(
                     tmp.read_bytes(),
+                    filename=file.filename,
+                    mime_type=file.content_type,
                     source=file.filename,
                     rich=BITMIND_RICH,
                 )
@@ -689,6 +931,7 @@ def infer_image(file: UploadFile = File(...)) -> dict:
                     details["bitmind_confidence"] = verdict.get("confidence")
             except Exception as exc:
                 details["bitmind_error"] = str(exc)
+                details["bitmind_error_type"] = _classify_provider_error(str(exc))
         result = _as_result(prob, details)
         _attach_runtime_sample_if_possible(result, tmp, "image")
         return result
@@ -734,6 +977,7 @@ def infer_video(file: UploadFile = File(...)) -> dict:
                     details["bitmind_confidence"] = verdict.get("confidence")
             except Exception as exc:
                 details["bitmind_error"] = str(exc)
+                details["bitmind_error_type"] = _classify_provider_error(str(exc))
         result = _as_result(prob, details)
         _attach_runtime_sample_if_possible(result, tmp, "video")
         return result

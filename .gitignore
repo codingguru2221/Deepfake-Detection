@@ -12,7 +12,7 @@ artifacts/
 data/raw/
 data/processed/
 models/checkpoints/
-
+.env
 *.h5
 *.pt
 *.pkl

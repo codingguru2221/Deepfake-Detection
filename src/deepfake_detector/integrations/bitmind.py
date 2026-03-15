@@ -3,10 +3,12 @@ from __future__ import annotations
 import base64
 import mimetypes
 import os
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image
 
 
 DEFAULT_BASE_URL = "https://api.bitmind.ai/oracle/v1"
@@ -23,6 +25,10 @@ def _base_url() -> str:
     return os.getenv("BITMIND_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
 
 
+def _oracle_id() -> str:
+    return os.getenv("BITMIND_ORACLE_ID", "34").strip() or "34"
+
+
 def is_enabled() -> bool:
     return bool(os.getenv("BITMIND_API_KEY"))
 
@@ -30,6 +36,8 @@ def is_enabled() -> bool:
 def detect_image_bytes(
     image_bytes: bytes,
     *,
+    filename: str | None = None,
+    mime_type: str | None = None,
     source: str | None = None,
     rich: bool = False,
     timeout_seconds: float = 25.0,
@@ -38,16 +46,45 @@ def detect_image_bytes(
     if not api_key:
         raise RuntimeError("BITMIND_API_KEY is not set.")
 
-    b64 = base64.b64encode(image_bytes).decode("ascii")
-    payload: dict[str, Any] = {"image": b64, "rich": bool(rich)}
+    normalized_bytes, normalized_mime = _normalize_image_payload(image_bytes, mime_type=mime_type)
+    b64 = base64.b64encode(normalized_bytes).decode("ascii")
+    mime = normalized_mime or mime_type or _guess_mime_type(filename) or "image/jpeg"
+    payload: dict[str, Any] = {"image": f"data:{mime};base64,{b64}", "rich": bool(rich)}
     if source:
         payload["source"] = source
 
-    url = f"{_base_url()}/34/detect-image"
+    url = f"{_base_url()}/{_oracle_id()}/detect-image"
     with httpx.Client(timeout=timeout_seconds) as client:
-        resp = client.post(url, headers=_headers(api_key), json=payload)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = client.post(url, headers=_headers(api_key), json=payload)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 400:
+                raise RuntimeError(_format_http_error("BitMind image request failed", exc)) from exc
+
+            # Some BitMind deployments reject data URLs and expect raw base64.
+            fallback_payload = dict(payload)
+            fallback_payload["image"] = b64
+            try:
+                resp = client.post(url, headers=_headers(api_key), json=fallback_payload)
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as raw_exc:
+                if raw_exc.response.status_code != 400:
+                    raise RuntimeError(_format_http_error("BitMind image request failed", raw_exc)) from raw_exc
+
+            # Final fallback: send the image as multipart form-data.
+            files = {"image": (filename or "upload.jpg", normalized_bytes, mime)}
+            data = {"rich": str(bool(rich)).lower()}
+            if source:
+                data["source"] = source
+            try:
+                resp = client.post(url, headers=_headers(api_key), files=files, data=data)
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPStatusError as multipart_exc:
+                raise RuntimeError(_format_http_error("BitMind image request failed", multipart_exc)) from multipart_exc
 
 
 def detect_video_file(
@@ -61,7 +98,7 @@ def detect_video_file(
     if not api_key:
         raise RuntimeError("BITMIND_API_KEY is not set.")
 
-    url = f"{_base_url()}/34/detect-video"
+    url = f"{_base_url()}/{_oracle_id()}/detect-video"
     size_mb = video_path.stat().st_size / (1024 * 1024)
     content_type, _ = mimetypes.guess_type(video_path.name)
     if content_type is None:
@@ -115,7 +152,7 @@ def _get_video_upload_url(filename: str, content_type: str | None) -> dict[str, 
     if not api_key:
         raise RuntimeError("BITMIND_API_KEY is not set.")
 
-    url = f"{_base_url()}/34/get-video-upload-url"
+    url = f"{_base_url()}/{_oracle_id()}/get-video-upload-url"
     payload: dict[str, Any] = {"filename": filename}
     if content_type:
         payload["contentType"] = content_type
@@ -136,3 +173,50 @@ def _upload_video_to_s3(upload_payload: dict[str, Any], video_path: Path) -> Non
             files = {"file": (video_path.name, f)}
             resp = client.post(url, data=fields, files=files)
             resp.raise_for_status()
+
+
+def _guess_mime_type(filename: str | None) -> str | None:
+    if not filename:
+        return None
+    mime, _ = mimetypes.guess_type(filename)
+    return mime
+
+
+def _normalize_image_payload(image_bytes: bytes, *, mime_type: str | None = None) -> tuple[bytes, str]:
+    try:
+        with Image.open(BytesIO(image_bytes)) as image:
+            image.load()
+            if image.mode not in {"RGB", "L"}:
+                image = image.convert("RGB")
+            largest_edge = max(image.size)
+            if largest_edge > 1600:
+                scale = 1600 / float(largest_edge)
+                resized = (
+                    max(1, int(image.size[0] * scale)),
+                    max(1, int(image.size[1] * scale)),
+                )
+                image = image.resize(resized)
+
+            buffer = BytesIO()
+            target_format = "PNG" if (mime_type or "").lower() == "image/png" else "JPEG"
+            save_kwargs = {"optimize": True}
+            if target_format == "JPEG":
+                save_kwargs["quality"] = 90
+            image.save(buffer, format=target_format, **save_kwargs)
+            normalized = buffer.getvalue()
+            normalized_mime = "image/png" if target_format == "PNG" else "image/jpeg"
+            return normalized, normalized_mime
+    except Exception:
+        return image_bytes, mime_type or "image/jpeg"
+
+
+def _format_http_error(prefix: str, exc: httpx.HTTPStatusError) -> str:
+    body = ""
+    try:
+        body = exc.response.text.strip()
+    except Exception:
+        body = ""
+    if body:
+        body = body[:400]
+        return f"{prefix}: {exc} | response={body}"
+    return f"{prefix}: {exc}"

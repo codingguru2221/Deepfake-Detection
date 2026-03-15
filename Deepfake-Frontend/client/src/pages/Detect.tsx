@@ -7,6 +7,51 @@ import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
+function normalizeProviderPrediction(source: any): 'real' | 'deepfake' | 'uncertain' | 'unavailable' {
+  if (source?.available === false || String(source?.prediction || '').toLowerCase() === 'unavailable') {
+    return 'unavailable';
+  }
+  const prediction = String(source?.prediction || '').toLowerCase();
+  if (prediction === 'real') return 'real';
+  if (prediction === 'deepfake') return 'deepfake';
+
+  const probFake = Number(source?.prob_fake);
+  if (Number.isFinite(probFake)) {
+    if (probFake >= 0.57) return 'deepfake';
+    if (probFake <= 0.37) return 'real';
+  }
+  return 'uncertain';
+}
+
+function providerLabel(provider: string) {
+  const labels: Record<string, string> = {
+    local: 'Local Model',
+    huggingface: 'Hugging Face',
+    aws_rekognition: 'AWS Rekognition',
+    openai: 'ChatGPT',
+    gemini: 'Gemini',
+    bitmind: 'BitMind',
+  };
+  return labels[provider] || provider;
+}
+
+function providerStatusText(source: any) {
+  const errorType = String(source?.error_type || '').toLowerCase();
+  if (errorType === 'rate_limited') return 'Temporarily rate limited';
+  if (errorType === 'network') return 'Network unavailable';
+  if (errorType === 'bad_request') return 'Request rejected';
+  if (source?.available === false) return 'Temporarily unavailable';
+  return null;
+}
+
+function bitmindStatusText(errorType: string, rawError: string | undefined) {
+  if (errorType === 'rate_limited') return 'BitMind temporarily rate limited.';
+  if (errorType === 'network') return 'BitMind temporarily unavailable.';
+  if (errorType === 'bad_request') return 'BitMind request was rejected.';
+  if (rawError) return 'BitMind temporarily unavailable.';
+  return null;
+}
+
 export default function Detect() {
   const [file, setFile] = useState<File | null>(null);
   const [modality, setModality] = useState<Modality>('image');
@@ -150,6 +195,12 @@ export default function Detect() {
     { id: 'audio', label: 'Audio', icon: FileAudio },
     { id: 'multimodal', label: 'Multimodal', icon: Zap },
   ];
+
+  const externalSources = (result?.details?.sources || []).filter((source: any) => source?.provider && source.provider !== 'local');
+  const providerErrors = result?.details?.provider_errors || [];
+  const bitmindError = typeof result?.details?.bitmind_error === 'string' ? result.details.bitmind_error : undefined;
+  const bitmindErrorType = String(result?.details?.bitmind_error_type || '').toLowerCase();
+  const bitmindUnavailable = bitmindErrorType === 'network';
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -355,9 +406,69 @@ export default function Detect() {
                   </div>
                 )}
 
-                {(result.details?.bitmind || result.details?.bitmind_error) && (
+                {(externalSources.length > 0 || result.details?.bitmind || result.details?.bitmind_error || providerErrors.length > 0) && (
                   <div className="space-y-3">
-                    <h4 className="text-sm font-mono text-muted-foreground border-b border-border pb-2">External Verification (BitMind)</h4>
+                    <h4 className="text-sm font-mono text-muted-foreground border-b border-border pb-2">External Verification</h4>
+                    {externalSources.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {externalSources.map((source: any) => {
+                          const verdict = normalizeProviderPrediction(source);
+                          const derivedProbFake = Number(source?.prob_fake);
+                          const confidence = typeof source?.confidence === "number"
+                            ? source.confidence
+                            : Number.isFinite(derivedProbFake)
+                            ? Math.max(derivedProbFake, 1 - derivedProbFake)
+                            : null;
+                          const statusText = providerStatusText(source);
+                          return (
+                            <div key={source.provider} className="p-4 rounded-lg border border-border bg-card space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="text-xs font-mono text-muted-foreground">{providerLabel(String(source.provider))}</div>
+                                <div className="text-[11px] font-mono text-muted-foreground uppercase">
+                                  {source.model || source.backend || "external"}
+                                </div>
+                              </div>
+                              <div className={cn(
+                                "text-lg font-mono uppercase",
+                                verdict === "deepfake"
+                                  ? "text-destructive"
+                                  : verdict === "real"
+                                  ? "text-primary"
+                                  : verdict === "unavailable"
+                                  ? "text-muted-foreground"
+                                  : "text-amber-400"
+                              )}>
+                                {verdict === "unavailable" ? "unavailable" : verdict}
+                              </div>
+                              {typeof source?.prob_fake === "number" ? (
+                                <div className="text-xs font-mono text-muted-foreground">
+                                  Fake probability: {(Number(source?.prob_fake || 0) * 100).toFixed(1)}%
+                                </div>
+                              ) : (
+                                <div className="text-xs font-mono text-muted-foreground">Fake probability: N/A</div>
+                              )}
+                              {typeof source?.confidence === "number" || Number.isFinite(confidence) ? (
+                                <div className="text-xs font-mono text-muted-foreground">
+                                  Confidence: {(confidence * 100).toFixed(1)}%
+                                </div>
+                              ) : (
+                                <div className="text-xs font-mono text-muted-foreground">Confidence: N/A</div>
+                              )}
+                              {statusText && (
+                                <div className="text-xs font-mono text-muted-foreground">
+                                  Status: {statusText}
+                                </div>
+                              )}
+                              {source?.error && source?.error_type === 'other' && (
+                                <div className="text-xs font-mono text-muted-foreground break-words">
+                                  Temporary provider issue
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     {result.details?.bitmind ? (
                       <div className="grid grid-cols-2 gap-4">
                         <div className="p-4 rounded-lg border border-border bg-card">
@@ -393,8 +504,20 @@ export default function Detect() {
                         </div>
                       </div>
                     ) : (
-                      <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                        BitMind check failed: {result.details?.bitmind_error}
+                      result.details?.bitmind_error && (
+                        <div className={cn(
+                          "p-4 rounded-lg text-sm border",
+                          bitmindUnavailable || bitmindErrorType === 'bad_request' || bitmindErrorType === 'rate_limited'
+                            ? "bg-secondary/30 border-border text-muted-foreground"
+                            : "bg-destructive/10 border-destructive/20 text-destructive"
+                        )}>
+                          {bitmindStatusText(bitmindErrorType, bitmindError) ?? "BitMind temporarily unavailable."}
+                        </div>
+                      )
+                    )}
+                    {providerErrors.length > 0 && (
+                      <div className="p-4 rounded-lg bg-secondary/30 border border-border text-muted-foreground text-sm">
+                        Provider fallback notes: {providerErrors.join(" | ")}
                       </div>
                     )}
                   </div>
