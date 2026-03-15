@@ -7,7 +7,12 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from deepfake_detector.data.calibration import load_thresholds
+
+try:
+    from deepfake_detector.data.calibration import load_thresholds
+except ModuleNotFoundError:
+    def load_thresholds() -> dict:
+        return {}
 
 
 def predict_image(image_path: Path, model_path: Path) -> float:
